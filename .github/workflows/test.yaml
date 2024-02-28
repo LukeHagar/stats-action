@@ -5,5 +5,7 @@ jobs:
   Test-GitHub-Actions:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
+
       - uses: ./
         # with:
