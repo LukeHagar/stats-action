@@ -6,6 +6,11 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  # Give the default GITHUB_TOKEN write permission to commit and push the
+  # added or changed files to the repository.
+  contents: write
+
 jobs:
   Test-GitHub-Actions:
     runs-on: ubuntu-latest
@@ -27,8 +32,6 @@ jobs:
           cmd: build
 
       - uses: ./
-        with:
-          username: lukehagar
         env:
           GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
         # with:
