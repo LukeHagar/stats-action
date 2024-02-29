@@ -4,46 +4,20 @@ import { writeFileSync } from "fs";
 import { Octokit } from "octokit";
 import { throttling } from "@octokit/plugin-throttling";
 import { ContributionsCollection, Language } from "./Types";
+import type { GraphQlQueryResponseData } from "@octokit/graphql";
 config();
 
 const ThrottledOctokit = Octokit.plugin(throttling);
 
-export async function getGraphQLData(octokit: Octokit, username: string) {
-  return octokit.graphql.paginate(
-    `query userInfo($login: String!, $cursor: String) {
+export async function getUserData(
+  octokit: Octokit,
+  username: string
+): Promise<GraphQlQueryResponseData> {
+  return octokit.graphql(
+    `query userInfo($login: String!) {
       user(login: $login) {
         name
         login
-        repositories(
-          orderBy: {field: STARGAZERS, direction: DESC}
-          ownerAffiliations: OWNER
-          isFork: false
-          first: 100
-          after: $cursor
-        ) {
-          totalCount
-          nodes {
-            stargazers {
-              totalCount
-            }
-            forkCount
-            name
-            languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
-              edges {
-                size
-                node {
-                  
-                  color
-                  name
-                }
-              }
-            }
-          }
-          pageInfo {
-            endCursor
-            hasNextPage
-          }
-        }
         pullRequests(first: 1) {
           totalCount
         }
@@ -63,6 +37,47 @@ export async function getGraphQLData(octokit: Octokit, username: string) {
         resetAt
       }
     }`,
+    {
+      login: username,
+    }
+  );
+}
+
+export async function getRepoData(octokit: Octokit, username: string) {
+  return octokit.graphql.paginate(
+    `query repoInfo ($login: String!, $cursor: String) {
+    user(login: $login) {
+      repositories(
+        orderBy: {field: STARGAZERS, direction: DESC}
+        ownerAffiliations: OWNER
+        isFork: false
+        first: 100
+        after: $cursor
+      ) {
+        totalCount
+        nodes {
+          stargazers {
+            totalCount
+          }
+          forkCount
+          name
+          languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+            edges {
+              size
+              node {
+                color
+                name
+              }
+            }
+          }
+        }
+        pageInfo {
+          endCursor
+          hasNextPage
+        }
+      }
+    }
+  }`,
     {
       login: username,
     }
@@ -257,7 +272,7 @@ try {
   const token = process.env["GITHUB_TOKEN"];
   if (!token) throw new Error("GITHUB_TOKEN is not present");
 
-  const username = core.getInput("username");
+  const username = core.getInput("username") || "lukehagar";
 
   if (!username) throw new Error("Username is not present");
 
@@ -293,25 +308,27 @@ try {
   // const accountCreationDate = userDetails.data.created_at;
 
   const [
-    graphQLData,
+    userData,
+    repoData,
     totalCommits,
     //  contributionsCollection
   ] = await Promise.all([
-    getGraphQLData(octokit, username),
+    getUserData(octokit, username),
+    getRepoData(octokit, username),
     getTotalCommits(octokit, username),
     // getContributionCollection(octokit, accountCreationDate),
   ]);
 
   let starCount = 0;
   let forkCount = 0;
-  for (const repo of graphQLData.user.repositories.nodes) {
+  for (const repo of repoData.user.repositories.nodes) {
     starCount += repo.stargazers.totalCount;
     forkCount += repo.forkCount;
   }
 
   const contributorStatsPromises = [];
   const viewCountPromises = [];
-  for (const repo of graphQLData.user.repositories.nodes) {
+  for (const repo of repoData.user.repositories.nodes) {
     contributorStatsPromises.push(
       getReposContributorsStats(octokit, username, repo.name)
     );
@@ -348,7 +365,7 @@ try {
   const topLanguages: Language[] = [];
   let codeByteTotal = 0;
 
-  for (const node of graphQLData.user.repositories.nodes) {
+  for (const node of repoData.user.repositories.nodes) {
     for (const edge of node.languages.edges) {
       if (NOT_LANGUAGES_OBJ[edge.node.name.toLowerCase()]) {
         continue;
@@ -385,15 +402,15 @@ try {
         repoViews,
         linesOfCodeChanged,
         totalCommits: totalCommits.data.total_count,
-        totalPullRequests: graphQLData.user.pullRequests.totalCount,
+        totalPullRequests: userData.user.pullRequests.totalCount,
         codeByteTotal,
         topLanguages,
         forkCount,
         starCount,
         // totalContributions:
         //   contributionsCollection.contributionCalendar.totalContributions,
-        closedIssues: graphQLData.viewer.closedIssues.totalCount,
-        openIssues: graphQLData.viewer.openIssues.totalCount,
+        closedIssues: userData.viewer.closedIssues.totalCount,
+        openIssues: userData.viewer.openIssues.totalCount,
         fetchedAt,
         // contributionData: allDays,
       },
