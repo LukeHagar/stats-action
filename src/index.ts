@@ -207,8 +207,6 @@ export async function getContributionCollection(
     viewer: { contributionsCollection: ContributionsCollection };
   }[];
 
-  console.debug(years);
-
   if (years.length === 0) {
     throw new Error("Failed to fetch data for all years");
   }
