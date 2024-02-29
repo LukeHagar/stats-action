@@ -153,9 +153,7 @@ export async function getContributionCollection(
     `
         )
         .catch((error) => {
-          throw new Error(
-            `Failed to fetch data for year ${i}: ${error.message}`
-          );
+          console.error(`Failed to fetch data for year ${i}: ${error.message}`);
         })
     );
   }
