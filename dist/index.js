@@ -45401,10 +45401,13 @@ try {
             contributorStatsPromises.push(getReposContributorsStats(octokit, username, repo.name));
         }
     }
-    const contributorStats = (await Promise.all(contributorStatsPromises))
+    const contributorStats = (await Promise.allSettled(contributorStatsPromises))
         .filter((entry) => entry !== null || entry !== undefined)
         .map((entry) => {
-        return (Array.isArray(entry.data) ? entry.data : [entry.data])
+        if (entry.status === "rejected") {
+            return [];
+        }
+        return (Array.isArray(entry.value.data) ? entry.value.data : [entry.value.data])
             .filter((contributor) => contributor.author?.login === userDetails.data.login)
             .map((contributor) => contributor.weeks);
     });
