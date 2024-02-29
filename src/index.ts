@@ -292,12 +292,15 @@ try {
   const userDetails = await octokit.rest.users.getByUsername({ username });
   const accountCreationDate = userDetails.data.created_at;
 
-  const [graphQLData, totalCommits, contributionsCollection] =
-    await Promise.all([
-      getGraphQLData(octokit, username),
-      getTotalCommits(octokit, username),
-      getContributionCollection(octokit, accountCreationDate),
-    ]);
+  const [
+    graphQLData,
+    totalCommits,
+    //  contributionsCollection
+  ] = await Promise.all([
+    getGraphQLData(octokit, username),
+    getTotalCommits(octokit, username),
+    // getContributionCollection(octokit, accountCreationDate),
+  ]);
 
   let starCount = 0;
   let forkCount = 0;
@@ -369,9 +372,9 @@ try {
     }
   }
 
-  const allDays = contributionsCollection.contributionCalendar.weeks
-    .map((w) => w.contributionDays)
-    .flat(1);
+  // const allDays = contributionsCollection.contributionCalendar.weeks
+  //   .map((w) => w.contributionDays)
+  //   .flat(1);
 
   writeFileSync(
     "github-user-stats.json",
@@ -387,12 +390,12 @@ try {
         topLanguages,
         forkCount,
         starCount,
-        totalContributions:
-          contributionsCollection.contributionCalendar.totalContributions,
+        // totalContributions:
+        //   contributionsCollection.contributionCalendar.totalContributions,
         closedIssues: graphQLData.viewer.closedIssues.totalCount,
         openIssues: graphQLData.viewer.openIssues.totalCount,
         fetchedAt,
-        contributionData: allDays,
+        // contributionData: allDays,
       },
       null,
       4
