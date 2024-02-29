@@ -3,3 +3,7 @@ description: "retrieve github profile stats and save locally to repo for further
 runs:
   using: "node20"
   main: "./dist/index.js"
+inputs:
+  username:
+    description: "The username of the github profile to pull stats for"
+    required: true
