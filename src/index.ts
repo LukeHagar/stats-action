@@ -300,10 +300,6 @@ try {
   const token = process.env["GITHUB_TOKEN"];
   if (!token) throw new Error("GITHUB_TOKEN is not present");
 
-  const username = core.getInput("username") || "lukehagar";
-
-  if (!username) throw new Error("Username is not present");
-
   const octokit = new ThrottledOctokit({
     auth: token,
     throttle: {
@@ -332,8 +328,8 @@ try {
 
   const fetchedAt = Date.now();
 
-  const userDetails = await octokit.rest.users.getByUsername({ username });
-
+  const userDetails = await octokit.rest.users.getAuthenticated();
+  const username = userDetails.data.login;
   const [userData, repoData, totalCommits, contributionsCollection] =
     await Promise.all([
       getUserData(octokit, username),
