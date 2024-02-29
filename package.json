@@ -7,14 +7,14 @@
     "@actions/github": "^6.0.0",
     "@octokit/action": "^6.0.7",
     "@octokit/plugin-paginate-graphql": "^4.0.0",
+    "@vercel/ncc": "^0.38.1",
     "dotenv": "^16.4.5",
     "octokit": "^3.1.2",
     "typescript": "^5.3.3",
     "vite": "^5.1.4"
   },
   "scripts": {
-    "dev": "vite build && node ./build/dist/github-profile-stats.js",
-    "build": "vite build"
+    "build": "tsc && ncc build lib/index.js"
   },
   "type": "module",
   "devDependencies": {

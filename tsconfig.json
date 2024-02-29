@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "./build",
+    "outDir": "lib",
     "paths": {
       "@/*": ["./src/*"],
-      "@@/*": ["./*"],
+      "@@/*": ["./*"]
     },
     "target": "ESNext",
     "useDefineForClassFields": true,
@@ -19,8 +19,8 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"],
+    "types": ["node"]
   },
   "include": ["src"],
-  "exclude": ["**/*.test.ts", "node_modules", "test/**", ".history/**"],
+  "exclude": ["**/*.test.ts", "node_modules", "test/**", ".history/**"]
 }
