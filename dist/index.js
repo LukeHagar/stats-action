@@ -41817,14 +41817,6 @@ try {
 
 /***/ }),
 
-/***/ 5716:
-/***/ ((module) => {
-
-module.exports = eval("require")("./octokit");
-
-
-/***/ }),
-
 /***/ 9491:
 /***/ ((module) => {
 
@@ -45099,19 +45091,217 @@ exports.LRUCache = LRUCache;
 
 __nccwpck_require__.a(__webpack_module__, async (__webpack_handle_async_dependencies__, __webpack_async_result__) => { try {
 /* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
-/* harmony export */   "p": () => (/* binding */ NOT_LANGUAGES)
+/* harmony export */   "Zn": () => (/* binding */ getUsersStars),
+/* harmony export */   "dA": () => (/* binding */ getGraphQLData),
+/* harmony export */   "dO": () => (/* binding */ getReposContributorsStats),
+/* harmony export */   "dS": () => (/* binding */ getTotalCommits),
+/* harmony export */   "h7": () => (/* binding */ getContributionCollection),
+/* harmony export */   "pI": () => (/* binding */ NOT_LANGUAGES),
+/* harmony export */   "qF": () => (/* binding */ getReposViewCount)
 /* harmony export */ });
 /* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(2186);
-/* harmony import */ var octokit__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(7467);
 /* harmony import */ var dotenv__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(2437);
-/* harmony import */ var _octokit__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(5716);
-/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(7147);
-
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(7147);
+/* harmony import */ var octokit__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(7467);
 
 
 
 
 (0,dotenv__WEBPACK_IMPORTED_MODULE_1__.config)();
+async function getGraphQLData(octokit, username) {
+    return octokit.graphql.paginate(`query userInfo($login: String!, $cursor: String) {
+      user(login: $login) {
+        name
+        login
+        repositories(
+          orderBy: {field: STARGAZERS, direction: DESC}
+          ownerAffiliations: OWNER
+          isFork: false
+          first: 100
+          after: $cursor
+        ) {
+          totalCount
+          nodes {
+            stargazers {
+              totalCount
+            }
+            forkCount
+            name
+            languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+              edges {
+                size
+                node {
+                  
+                  color
+                  name
+                }
+              }
+            }
+          }
+          pageInfo {
+            endCursor
+            hasNextPage
+          }
+        }
+        pullRequests(first: 1) {
+          totalCount
+        }
+      }
+      viewer {
+        openIssues: issues(states: OPEN) {
+          totalCount
+        }
+        closedIssues: issues(states: CLOSED) {
+          totalCount
+        }
+      }
+      rateLimit {
+        limit
+        remaining
+        used
+        resetAt
+      }
+    }`, {
+        login: username,
+    });
+}
+async function getContributionCollection(octokit, year) {
+    const yearCreated = new Date(year);
+    const currentYear = new Date();
+    const promises = [];
+    for (let i = yearCreated.getFullYear(); i <= currentYear.getFullYear(); i++) {
+        let startYear = `${i}-01-01T00:00:00.000Z`;
+        if (i === yearCreated.getFullYear())
+            startYear = year;
+        let endYear = `${i + 1}-01-01T00:00:00.000Z`;
+        if (i === currentYear.getFullYear())
+            endYear = currentYear.toISOString();
+        promises.push(octokit
+            .graphql(`query {
+            rateLimit {
+              limit
+              remaining
+              used
+              resetAt
+            }
+        viewer {
+          contributionsCollection(from: "${startYear}", to: "${endYear}") {
+            totalCommitContributions
+            restrictedContributionsCount
+            totalIssueContributions
+            totalCommitContributions
+            totalRepositoryContributions
+            totalPullRequestContributions
+            totalPullRequestReviewContributions
+            popularPullRequestContribution {
+              pullRequest {
+                id
+                title
+                repository {
+                  name
+                  owner {
+                    login
+                  }
+                }
+              }
+            }
+            contributionCalendar {
+              totalContributions
+              weeks {
+                contributionDays {
+                  contributionCount
+                  date
+                }
+              }
+            }
+            commitContributionsByRepository {
+              contributions {
+                totalCount
+              }
+              repository {
+                name
+                owner {
+                  login
+                }
+                languages(first: 5, orderBy: { field: SIZE, direction: DESC }) {
+                  edges {
+                    size
+                    node {
+                      color
+                      name
+                      id
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `)
+            .catch((error) => {
+            throw new Error(`Failed to fetch data for year ${i}: ${error.message}`);
+        }));
+    }
+    console.log(promises);
+    const years = (await Promise.all(promises)).filter(Boolean);
+    console.debug(years);
+    if (years.length === 0) {
+        throw new Error("Failed to fetch data for all years");
+    }
+    const { contributionsCollection } = years[0].viewer;
+    for (const year of years.slice(1)) {
+        contributionsCollection.commitContributionsByRepository = [
+            ...contributionsCollection.commitContributionsByRepository,
+            ...year.viewer.contributionsCollection.commitContributionsByRepository,
+        ];
+        contributionsCollection.contributionCalendar.totalContributions +=
+            year.viewer.contributionsCollection.contributionCalendar.totalContributions;
+        contributionsCollection.contributionCalendar.weeks = [
+            ...contributionsCollection.contributionCalendar.weeks,
+            ...year.viewer.contributionsCollection.contributionCalendar.weeks,
+        ];
+    }
+    return contributionsCollection;
+}
+async function getTotalCommits(octokit, username) {
+    return octokit.rest.search.commits({
+        q: `author:${username}`,
+    });
+}
+async function getUsersStars(octokit, username) {
+    return octokit.rest.activity.listReposStarredByUser({
+        username,
+    });
+}
+async function getReposContributorsStats(octokit, username, repo) {
+    return octokit.rest.repos
+        .getContributorsStats({
+        owner: username,
+        repo,
+    })
+        .then((res) => {
+        if (res.status === 202) {
+            setTimeout(() => {
+                return octokit.rest.repos.getContributorsStats({
+                    owner: username,
+                    repo,
+                });
+            }, 2000);
+        }
+        return res;
+    })
+        .catch((error) => {
+        throw new Error(`Failed to fetch data for repo ${repo}: ${error.message}`);
+    });
+}
+async function getReposViewCount(octokit, username, repo) {
+    return octokit.rest.repos.getViews({
+        per: "week",
+        owner: username,
+        repo,
+    });
+}
 const NOT_LANGUAGES = [
     "html",
     "markdown",
@@ -45127,15 +45317,15 @@ try {
     const token = process.env["GITHUB_TOKEN"];
     if (!token)
         throw new Error("GITHUB_TOKEN is not present");
-    const octokit = new octokit__WEBPACK_IMPORTED_MODULE_4__.Octokit({ auth: token });
+    const octokit = new octokit__WEBPACK_IMPORTED_MODULE_3__.Octokit({ auth: token });
     const fetchedAt = Date.now();
     const userDetails = await octokit.rest.users.getAuthenticated();
     const username = userDetails.data.login;
     const accountCreationDate = userDetails.data.created_at;
     const [graphQLData, totalCommits, contributionsCollection] = await Promise.all([
-        (0,_octokit__WEBPACK_IMPORTED_MODULE_2__.getGraphQLData)(octokit, username),
-        (0,_octokit__WEBPACK_IMPORTED_MODULE_2__.getTotalCommits)(octokit, username),
-        (0,_octokit__WEBPACK_IMPORTED_MODULE_2__.getContributionCollection)(octokit, accountCreationDate),
+        getGraphQLData(octokit, username),
+        getTotalCommits(octokit, username),
+        getContributionCollection(octokit, accountCreationDate),
     ]);
     console.log(userDetails);
     console.log(graphQLData);
@@ -45150,8 +45340,8 @@ try {
     const contributorStatsPromises = [];
     const viewCountPromises = [];
     for (const repo of graphQLData.user.repositories.nodes) {
-        contributorStatsPromises.push((0,_octokit__WEBPACK_IMPORTED_MODULE_2__.getReposContributorsStats)(octokit, username, repo.name));
-        viewCountPromises.push((0,_octokit__WEBPACK_IMPORTED_MODULE_2__.getReposViewCount)(octokit, username, repo.name));
+        contributorStatsPromises.push(getReposContributorsStats(octokit, username, repo.name));
+        viewCountPromises.push(getReposViewCount(octokit, username, repo.name));
     }
     const contributorStats = (await Promise.all(contributorStatsPromises))
         .filter((entry) => entry !== null || entry !== undefined)
@@ -45198,7 +45388,7 @@ try {
     const allDays = contributionsCollection.contributionCalendar.weeks
         .map((w) => w.contributionDays)
         .flat(1);
-    (0,fs__WEBPACK_IMPORTED_MODULE_3__.writeFileSync)("github-user-stats.json", JSON.stringify({
+    (0,fs__WEBPACK_IMPORTED_MODULE_2__.writeFileSync)("github-user-stats.json", JSON.stringify({
         name: userDetails.data.name || "",
         username,
         repoViews,
@@ -45362,6 +45552,12 @@ module.exports = JSON.parse('{"name":"dotenv","version":"16.4.5","description":"
 /******/ // This entry module used 'module' so it can't be inlined
 /******/ var __webpack_exports__ = __nccwpck_require__(4554);
 /******/ __webpack_exports__ = await __webpack_exports__;
-/******/ var __webpack_exports__NOT_LANGUAGES = __webpack_exports__.p;
-/******/ export { __webpack_exports__NOT_LANGUAGES as NOT_LANGUAGES };
+/******/ var __webpack_exports__NOT_LANGUAGES = __webpack_exports__.pI;
+/******/ var __webpack_exports__getContributionCollection = __webpack_exports__.h7;
+/******/ var __webpack_exports__getGraphQLData = __webpack_exports__.dA;
+/******/ var __webpack_exports__getReposContributorsStats = __webpack_exports__.dO;
+/******/ var __webpack_exports__getReposViewCount = __webpack_exports__.qF;
+/******/ var __webpack_exports__getTotalCommits = __webpack_exports__.dS;
+/******/ var __webpack_exports__getUsersStars = __webpack_exports__.Zn;
+/******/ export { __webpack_exports__NOT_LANGUAGES as NOT_LANGUAGES, __webpack_exports__getContributionCollection as getContributionCollection, __webpack_exports__getGraphQLData as getGraphQLData, __webpack_exports__getReposContributorsStats as getReposContributorsStats, __webpack_exports__getReposViewCount as getReposViewCount, __webpack_exports__getTotalCommits as getTotalCommits, __webpack_exports__getUsersStars as getUsersStars };
 /******/ 
