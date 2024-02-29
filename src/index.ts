@@ -2,8 +2,11 @@ import core from "@actions/core";
 import { config } from "dotenv";
 import { writeFileSync } from "fs";
 import { Octokit } from "octokit";
+import { throttling } from "@octokit/plugin-throttling";
 import { ContributionsCollection, Language } from "./Types";
 config();
+
+const ThrottledOctokit = Octokit.plugin(throttling);
 
 export async function getGraphQLData(octokit: Octokit, username: string) {
   return octokit.graphql.paginate(
@@ -157,8 +160,6 @@ export async function getContributionCollection(
     );
   }
 
-  console.log(promises);
-
   const years = (await Promise.all(promises)).filter(Boolean) as {
     viewer: { contributionsCollection: ContributionsCollection };
   }[];
@@ -262,7 +263,31 @@ try {
 
   if (!username) throw new Error("Username is not present");
 
-  const octokit = new Octokit({ auth: token });
+  const octokit = new ThrottledOctokit({
+    auth: token,
+    throttle: {
+      onRateLimit: (retryAfter, options, octokit, retryCount) => {
+        octokit.log.warn(
+          `Request quota exhausted for request ${options.method} ${options.url}`
+        );
+
+        if (retryCount < 1) {
+          // only retries once
+          octokit.log.info(`Retrying after ${retryAfter} seconds!`);
+          return true;
+        }
+        return false;
+      },
+      onSecondaryRateLimit: (retryAfter, options, octokit) => {
+        // does not retry, only logs a warning
+        octokit.log.warn(
+          `SecondaryRateLimit detected for request ${options.method} ${options.url}.`
+        );
+        octokit.log.info(`Retrying after ${retryAfter} seconds!`);
+        return true;
+      },
+    },
+  });
 
   const fetchedAt = Date.now();
 
@@ -275,11 +300,6 @@ try {
       getTotalCommits(octokit, username),
       getContributionCollection(octokit, accountCreationDate),
     ]);
-
-  console.log(userDetails);
-  console.log(graphQLData);
-  console.log(totalCommits);
-  console.log(contributionsCollection);
 
   let starCount = 0;
   let forkCount = 0;
