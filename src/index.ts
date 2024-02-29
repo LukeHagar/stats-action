@@ -258,12 +258,15 @@ try {
   const token = process.env["GITHUB_TOKEN"];
   if (!token) throw new Error("GITHUB_TOKEN is not present");
 
+  const username = core.getInput("username");
+
+  if (!username) throw new Error("Username is not present");
+
   const octokit = new Octokit({ auth: token });
 
   const fetchedAt = Date.now();
 
-  const userDetails = await octokit.rest.users.getAuthenticated();
-  const username = userDetails.data.login;
+  const userDetails = await octokit.rest.users.getByUsername({ username });
   const accountCreationDate = userDetails.data.created_at;
 
   const [graphQLData, totalCommits, contributionsCollection] =
