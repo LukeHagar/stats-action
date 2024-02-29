@@ -43,41 +43,71 @@ export async function getUserData(
   );
 }
 
-export async function getRepoData(octokit: Octokit, username: string) {
+export async function getRepoData(
+  octokit: Octokit,
+  username: string
+): Promise<GraphQlQueryResponseData> {
   return octokit.graphql.paginate(
-    `query repoInfo ($login: String!, $cursor: String) {
-    user(login: $login) {
-      repositories(
-        orderBy: {field: STARGAZERS, direction: DESC}
-        ownerAffiliations: OWNER
-        isFork: false
-        first: 100
-        after: $cursor
-      ) {
-        totalCount
-        nodes {
-          stargazers {
-            totalCount
+    `query repoInfo($login: String!, $cursor: String) {
+      user(login: $login) {
+        repositories(
+          orderBy: {field: STARGAZERS, direction: DESC}
+          ownerAffiliations: OWNER
+          isFork: false
+          first: 100
+        ) {
+          totalCount
+          nodes {
+            stargazers {
+              totalCount
+            }
+            forkCount
+            name
+            languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+              edges {
+                size
+                node {
+                  color
+                  name
+                }
+              }
+            }
           }
-          forkCount
-          name
-          languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
-            edges {
-              size
-              node {
-                color
-                name
+          pageInfo {
+            endCursor
+            hasNextPage
+          }
+        }
+        repositoriesContributedTo(
+          first: 100
+          includeUserRepositories: false
+          orderBy: {field: STARGAZERS, direction: DESC}
+          contributionTypes: [COMMIT, PULL_REQUEST, REPOSITORY, PULL_REQUEST_REVIEW]
+          after: $cursor
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            nameWithOwner
+            stargazers {
+              totalCount
+            }
+            forkCount
+            languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+              edges {
+                size
+                node {
+                  name
+                  color
+                }
               }
             }
           }
         }
-        pageInfo {
-          endCursor
-          hasNextPage
-        }
       }
-    }
-  }`,
+    }`,
     {
       login: username,
     }
@@ -319,6 +349,8 @@ try {
     // getContributionCollection(octokit, accountCreationDate),
   ]);
 
+  console.log("repoData", repoData.user.repositoriesContributedTo.nodes);
+
   let starCount = 0;
   let forkCount = 0;
   for (const repo of repoData.user.repositories.nodes) {
@@ -329,10 +361,20 @@ try {
   const contributorStatsPromises = [];
   const viewCountPromises = [];
   for (const repo of repoData.user.repositories.nodes) {
-    contributorStatsPromises.push(
-      getReposContributorsStats(octokit, username, repo.name)
-    );
-    viewCountPromises.push(getReposViewCount(octokit, username, repo.name));
+    if (repo.name) {
+      contributorStatsPromises.push(
+        getReposContributorsStats(octokit, username, repo.name)
+      );
+      viewCountPromises.push(getReposViewCount(octokit, username, repo.name));
+    }
+  }
+
+  for (const repo of repoData.user.repositoriesContributedTo.nodes) {
+    if (repo.name) {
+      contributorStatsPromises.push(
+        getReposContributorsStats(octokit, username, repo.name)
+      );
+    }
   }
 
   const contributorStats = (await Promise.all(contributorStatsPromises))

@@ -2,10 +2,10 @@
     "name": "Luke Hagar",
     "username": "lukehagar",
     "repoViews": 1589,
-    "linesOfCodeChanged": 7397302,
+    "linesOfCodeChanged": 10613251,
     "totalCommits": 1582,
     "totalPullRequests": 48,
-    "codeByteTotal": 11731473,
+    "codeByteTotal": 11731760,
     "topLanguages": [
         {
             "languageName": "Svelte",
@@ -20,7 +20,7 @@
         {
             "languageName": "TypeScript",
             "color": "#3178c6",
-            "value": 3157579
+            "value": 3157866
         },
         {
             "languageName": "Makefile",
@@ -82,5 +82,5 @@
     "starCount": 113,
     "closedIssues": 12,
     "openIssues": 10,
-    "fetchedAt": 1709244633038
+    "fetchedAt": 1709246251263
 }
