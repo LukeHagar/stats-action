@@ -14,7 +14,7 @@
     "vite": "^5.1.4"
   },
   "scripts": {
-    "build": "tsc && ncc build lib/index.js"
+    "build": "tsc && ncc build --target es2024 lib/index.js"
   },
   "type": "module",
   "devDependencies": {
