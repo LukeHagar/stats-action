@@ -45091,11 +45091,12 @@ exports.LRUCache = LRUCache;
 
 __nccwpck_require__.a(__webpack_module__, async (__webpack_handle_async_dependencies__, __webpack_async_result__) => { try {
 /* harmony export */ __nccwpck_require__.d(__webpack_exports__, {
+/* harmony export */   "Oc": () => (/* binding */ getRepoData),
 /* harmony export */   "Zn": () => (/* binding */ getUsersStars),
-/* harmony export */   "dA": () => (/* binding */ getGraphQLData),
 /* harmony export */   "dO": () => (/* binding */ getReposContributorsStats),
 /* harmony export */   "dS": () => (/* binding */ getTotalCommits),
 /* harmony export */   "h7": () => (/* binding */ getContributionCollection),
+/* harmony export */   "is": () => (/* binding */ getUserData),
 /* harmony export */   "pI": () => (/* binding */ NOT_LANGUAGES),
 /* harmony export */   "qF": () => (/* binding */ getReposViewCount)
 /* harmony export */ });
@@ -45103,46 +45104,19 @@ __nccwpck_require__.a(__webpack_module__, async (__webpack_handle_async_dependen
 /* harmony import */ var dotenv__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(2437);
 /* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(7147);
 /* harmony import */ var octokit__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(7467);
+/* harmony import */ var _octokit_plugin_throttling__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(5658);
+
 
 
 
 
 (0,dotenv__WEBPACK_IMPORTED_MODULE_1__.config)();
-async function getGraphQLData(octokit, username) {
-    return octokit.graphql.paginate(`query userInfo($login: String!, $cursor: String) {
+const ThrottledOctokit = octokit__WEBPACK_IMPORTED_MODULE_3__.Octokit.plugin(_octokit_plugin_throttling__WEBPACK_IMPORTED_MODULE_4__.throttling);
+async function getUserData(octokit, username) {
+    return octokit.graphql(`query userInfo($login: String!) {
       user(login: $login) {
         name
         login
-        repositories(
-          orderBy: {field: STARGAZERS, direction: DESC}
-          ownerAffiliations: OWNER
-          isFork: false
-          first: 100
-          after: $cursor
-        ) {
-          totalCount
-          nodes {
-            stargazers {
-              totalCount
-            }
-            forkCount
-            name
-            languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
-              edges {
-                size
-                node {
-                  
-                  color
-                  name
-                }
-              }
-            }
-          }
-          pageInfo {
-            endCursor
-            hasNextPage
-          }
-        }
         pullRequests(first: 1) {
           totalCount
         }
@@ -45160,6 +45134,70 @@ async function getGraphQLData(octokit, username) {
         remaining
         used
         resetAt
+      }
+    }`, {
+        login: username,
+    });
+}
+async function getRepoData(octokit, username) {
+    return octokit.graphql.paginate(`query repoInfo($login: String!, $cursor: String) {
+      user(login: $login) {
+        repositories(
+          orderBy: {field: STARGAZERS, direction: DESC}
+          ownerAffiliations: OWNER
+          isFork: false
+          first: 100
+        ) {
+          totalCount
+          nodes {
+            stargazers {
+              totalCount
+            }
+            forkCount
+            name
+            languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+              edges {
+                size
+                node {
+                  color
+                  name
+                }
+              }
+            }
+          }
+          pageInfo {
+            endCursor
+            hasNextPage
+          }
+        }
+        repositoriesContributedTo(
+          first: 100
+          includeUserRepositories: false
+          orderBy: {field: STARGAZERS, direction: DESC}
+          contributionTypes: [COMMIT, PULL_REQUEST, REPOSITORY, PULL_REQUEST_REVIEW]
+          after: $cursor
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            nameWithOwner
+            stargazers {
+              totalCount
+            }
+            forkCount
+            languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+              edges {
+                size
+                node {
+                  name
+                  color
+                }
+              }
+            }
+          }
+        }
       }
     }`, {
         login: username,
@@ -45240,12 +45278,10 @@ async function getContributionCollection(octokit, year) {
       }
     `)
             .catch((error) => {
-            throw new Error(`Failed to fetch data for year ${i}: ${error.message}`);
+            console.error(`Failed to fetch data for year ${i}: ${error.message}`);
         }));
     }
-    console.log(promises);
     const years = (await Promise.all(promises)).filter(Boolean);
-    console.debug(years);
     if (years.length === 0) {
         throw new Error("Failed to fetch data for all years");
     }
@@ -45317,31 +45353,53 @@ try {
     const token = process.env["GITHUB_TOKEN"];
     if (!token)
         throw new Error("GITHUB_TOKEN is not present");
-    const octokit = new octokit__WEBPACK_IMPORTED_MODULE_3__.Octokit({ auth: token });
+    const octokit = new ThrottledOctokit({
+        auth: token,
+        throttle: {
+            onRateLimit: (retryAfter, options, octokit, retryCount) => {
+                octokit.log.warn(`Request quota exhausted for request ${options.method} ${options.url}`);
+                if (retryCount < 1) {
+                    // only retries once
+                    octokit.log.info(`Retrying after ${retryAfter} seconds!`);
+                    return true;
+                }
+                return false;
+            },
+            onSecondaryRateLimit: (retryAfter, options, octokit) => {
+                // does not retry, only logs a warning
+                octokit.log.warn(`SecondaryRateLimit detected for request ${options.method} ${options.url}.`);
+                octokit.log.info(`Retrying after ${retryAfter} seconds!`);
+                return true;
+            },
+        },
+    });
     const fetchedAt = Date.now();
     const userDetails = await octokit.rest.users.getAuthenticated();
     const username = userDetails.data.login;
-    const accountCreationDate = userDetails.data.created_at;
-    const [graphQLData, totalCommits, contributionsCollection] = await Promise.all([
-        getGraphQLData(octokit, username),
+    const [userData, repoData, totalCommits, contributionsCollection] = await Promise.all([
+        getUserData(octokit, username),
+        getRepoData(octokit, username),
         getTotalCommits(octokit, username),
-        getContributionCollection(octokit, accountCreationDate),
+        getContributionCollection(octokit, userDetails.data.created_at),
     ]);
-    console.log(userDetails);
-    console.log(graphQLData);
-    console.log(totalCommits);
-    console.log(contributionsCollection);
     let starCount = 0;
     let forkCount = 0;
-    for (const repo of graphQLData.user.repositories.nodes) {
+    for (const repo of repoData.user.repositories.nodes) {
         starCount += repo.stargazers.totalCount;
         forkCount += repo.forkCount;
     }
     const contributorStatsPromises = [];
     const viewCountPromises = [];
-    for (const repo of graphQLData.user.repositories.nodes) {
-        contributorStatsPromises.push(getReposContributorsStats(octokit, username, repo.name));
-        viewCountPromises.push(getReposViewCount(octokit, username, repo.name));
+    for (const repo of repoData.user.repositories.nodes) {
+        if (repo.name) {
+            contributorStatsPromises.push(getReposContributorsStats(octokit, username, repo.name));
+            viewCountPromises.push(getReposViewCount(octokit, username, repo.name));
+        }
+    }
+    for (const repo of repoData.user.repositoriesContributedTo.nodes) {
+        if (repo.name) {
+            contributorStatsPromises.push(getReposContributorsStats(octokit, username, repo.name));
+        }
     }
     const contributorStats = (await Promise.all(contributorStatsPromises))
         .filter((entry) => entry !== null || entry !== undefined)
@@ -45365,7 +45423,7 @@ try {
     }
     const topLanguages = [];
     let codeByteTotal = 0;
-    for (const node of graphQLData.user.repositories.nodes) {
+    for (const node of repoData.user.repositories.nodes) {
         for (const edge of node.languages.edges) {
             if (NOT_LANGUAGES_OBJ[edge.node.name.toLowerCase()]) {
                 continue;
@@ -45394,14 +45452,14 @@ try {
         repoViews,
         linesOfCodeChanged,
         totalCommits: totalCommits.data.total_count,
-        totalPullRequests: graphQLData.user.pullRequests.totalCount,
+        totalPullRequests: userData.user.pullRequests.totalCount,
         codeByteTotal,
         topLanguages,
         forkCount,
         starCount,
         totalContributions: contributionsCollection.contributionCalendar.totalContributions,
-        closedIssues: graphQLData.viewer.closedIssues.totalCount,
-        openIssues: graphQLData.viewer.openIssues.totalCount,
+        closedIssues: userData.viewer.closedIssues.totalCount,
+        openIssues: userData.viewer.openIssues.totalCount,
         fetchedAt,
         contributionData: allDays,
     }, null, 4));
@@ -45554,10 +45612,11 @@ module.exports = JSON.parse('{"name":"dotenv","version":"16.4.5","description":"
 /******/ __webpack_exports__ = await __webpack_exports__;
 /******/ var __webpack_exports__NOT_LANGUAGES = __webpack_exports__.pI;
 /******/ var __webpack_exports__getContributionCollection = __webpack_exports__.h7;
-/******/ var __webpack_exports__getGraphQLData = __webpack_exports__.dA;
+/******/ var __webpack_exports__getRepoData = __webpack_exports__.Oc;
 /******/ var __webpack_exports__getReposContributorsStats = __webpack_exports__.dO;
 /******/ var __webpack_exports__getReposViewCount = __webpack_exports__.qF;
 /******/ var __webpack_exports__getTotalCommits = __webpack_exports__.dS;
+/******/ var __webpack_exports__getUserData = __webpack_exports__.is;
 /******/ var __webpack_exports__getUsersStars = __webpack_exports__.Zn;
-/******/ export { __webpack_exports__NOT_LANGUAGES as NOT_LANGUAGES, __webpack_exports__getContributionCollection as getContributionCollection, __webpack_exports__getGraphQLData as getGraphQLData, __webpack_exports__getReposContributorsStats as getReposContributorsStats, __webpack_exports__getReposViewCount as getReposViewCount, __webpack_exports__getTotalCommits as getTotalCommits, __webpack_exports__getUsersStars as getUsersStars };
+/******/ export { __webpack_exports__NOT_LANGUAGES as NOT_LANGUAGES, __webpack_exports__getContributionCollection as getContributionCollection, __webpack_exports__getRepoData as getRepoData, __webpack_exports__getReposContributorsStats as getReposContributorsStats, __webpack_exports__getReposViewCount as getReposViewCount, __webpack_exports__getTotalCommits as getTotalCommits, __webpack_exports__getUserData as getUserData, __webpack_exports__getUsersStars as getUsersStars };
 /******/ 
