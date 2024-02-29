@@ -32,3 +32,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
         # with:
+
+      - uses: stefanzweifel/git-auto-commit-action@v5
