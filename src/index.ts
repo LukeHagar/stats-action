@@ -335,21 +335,14 @@ try {
   const fetchedAt = Date.now();
 
   const userDetails = await octokit.rest.users.getByUsername({ username });
-  // const accountCreationDate = userDetails.data.created_at;
 
-  const [
-    userData,
-    repoData,
-    totalCommits,
-    //  contributionsCollection
-  ] = await Promise.all([
-    getUserData(octokit, username),
-    getRepoData(octokit, username),
-    getTotalCommits(octokit, username),
-    // getContributionCollection(octokit, accountCreationDate),
-  ]);
-
-  console.log("repoData", repoData.user.repositoriesContributedTo.nodes);
+  const [userData, repoData, totalCommits, contributionsCollection] =
+    await Promise.all([
+      getUserData(octokit, username),
+      getRepoData(octokit, username),
+      getTotalCommits(octokit, username),
+      getContributionCollection(octokit, userDetails.data.created_at),
+    ]);
 
   let starCount = 0;
   let forkCount = 0;
@@ -431,9 +424,9 @@ try {
     }
   }
 
-  // const allDays = contributionsCollection.contributionCalendar.weeks
-  //   .map((w) => w.contributionDays)
-  //   .flat(1);
+  const allDays = contributionsCollection.contributionCalendar.weeks
+    .map((w) => w.contributionDays)
+    .flat(1);
 
   writeFileSync(
     "github-user-stats.json",
@@ -449,12 +442,12 @@ try {
         topLanguages,
         forkCount,
         starCount,
-        // totalContributions:
-        //   contributionsCollection.contributionCalendar.totalContributions,
+        totalContributions:
+          contributionsCollection.contributionCalendar.totalContributions,
         closedIssues: userData.viewer.closedIssues.totalCount,
         openIssues: userData.viewer.openIssues.totalCount,
         fetchedAt,
-        // contributionData: allDays,
+        contributionData: allDays,
       },
       null,
       4
