@@ -290,7 +290,7 @@ try {
   const fetchedAt = Date.now();
 
   const userDetails = await octokit.rest.users.getByUsername({ username });
-  const accountCreationDate = userDetails.data.created_at;
+  // const accountCreationDate = userDetails.data.created_at;
 
   const [
     graphQLData,
