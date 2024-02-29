@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  Test-GitHub-Actions:
+  Collect-GitHub-Stats:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
