@@ -1,11 +1,11 @@
 {
     "name": "Luke Hagar",
     "username": "LukeHagar",
-    "repoViews": 1695,
-    "linesOfCodeChanged": 9306377,
+    "repoViews": 1842,
+    "linesOfCodeChanged": 633966,
     "totalCommits": 1582,
     "totalPullRequests": 48,
-    "codeByteTotal": 11732737,
+    "codeByteTotal": 12548750,
     "topLanguages": [
         {
             "languageName": "Svelte",
@@ -35,7 +35,7 @@
         {
             "languageName": "Python",
             "color": "#3572A5",
-            "value": 642936
+            "value": 703374
         },
         {
             "languageName": "Go",
@@ -46,6 +46,11 @@
             "languageName": "C#",
             "color": "#178600",
             "value": 675386
+        },
+        {
+            "languageName": "Ruby",
+            "color": "#701516",
+            "value": 755575
         },
         {
             "languageName": "Java",
@@ -83,7 +88,7 @@
     "totalContributions": 1773,
     "closedIssues": 12,
     "openIssues": 10,
-    "fetchedAt": 1709250936662,
+    "fetchedAt": 1709295395197,
     "contributionData": [
         {
             "contributionCount": 1,
@@ -15272,6 +15277,10 @@
         {
             "contributionCount": 0,
             "date": "2024-02-29"
+        },
+        {
+            "contributionCount": 0,
+            "date": "2024-03-01"
         }
     ]
 }
