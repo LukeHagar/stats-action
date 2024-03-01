@@ -297,23 +297,23 @@ try {
     auth: token,
     throttle: {
       onRateLimit: (retryAfter, options, octokit, retryCount) => {
-        core.warning(
+        octokit.log.warn(
           `Request quota exhausted for request ${options.method} ${options.url}`
         );
 
         if (retryCount < 1) {
           // only retries once
-          core.info(`Retrying after ${retryAfter} seconds!`);
+          octokit.log.info(`Retrying after ${retryAfter} seconds!`);
           return true;
         }
         return false;
       },
       onSecondaryRateLimit: (retryAfter, options, octokit) => {
         // does not retry, only logs a warning
-        core.warning(
+        octokit.log.warn(
           `SecondaryRateLimit detected for request ${options.method} ${options.url}.`
         );
-        core.info(`Retrying after ${retryAfter} seconds!`);
+        octokit.log.info(`Retrying after ${retryAfter} seconds!`);
         return true;
       },
     },
