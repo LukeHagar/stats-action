@@ -505,7 +505,7 @@ try {
         { data: "Name", header: true },
         { data: "Value", header: true },
       ],
-      ...tableData,
+      ...tableData.map((row) => [String(row[0]), String(row[1])]),
     ])
     .write();
 } catch (error) {
