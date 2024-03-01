@@ -291,29 +291,29 @@ const NOT_LANGUAGES_OBJ = Object.fromEntries(
 
 try {
   const token = process.env["GITHUB_TOKEN"];
-  if (!token) throw new Error("GITHUB_TOKEN is not present");
+  if (!token) core.error("GITHUB_TOKEN is not present");
 
   const octokit = new ThrottledOctokit({
     auth: token,
     throttle: {
       onRateLimit: (retryAfter, options, octokit, retryCount) => {
-        octokit.log.warn(
+        core.warning(
           `Request quota exhausted for request ${options.method} ${options.url}`
         );
 
         if (retryCount < 1) {
           // only retries once
-          octokit.log.info(`Retrying after ${retryAfter} seconds!`);
+          core.info(`Retrying after ${retryAfter} seconds!`);
           return true;
         }
         return false;
       },
       onSecondaryRateLimit: (retryAfter, options, octokit) => {
         // does not retry, only logs a warning
-        octokit.log.warn(
+        core.warning(
           `SecondaryRateLimit detected for request ${options.method} ${options.url}.`
         );
-        octokit.log.info(`Retrying after ${retryAfter} seconds!`);
+        core.info(`Retrying after ${retryAfter} seconds!`);
         return true;
       },
     },
@@ -360,21 +360,15 @@ try {
     let stats;
 
     if (!Array.isArray(repoContribStatsResp.data)) {
-      console.log("RepoContribStats is not an array");
       console.log(repoContribStatsResp);
-
       stats = [repoContribStatsResp.data];
     } else {
       stats = repoContribStatsResp.data;
     }
 
-    // console.log(stats);
-
     const repoContribStats = stats.find(
       (contributor) => contributor.author?.login === username
     );
-
-    // console.log(repoContribStats?.weeks);
 
     if (repoContribStats?.weeks)
       contributorStats.push(...repoContribStats.weeks);
@@ -448,37 +442,30 @@ try {
     .flat(1);
 
   const tableData = [
-    { name: "Name", value: userDetails.data.name || "" },
-    { name: "Username", value: username },
-    { name: "Repository Views", value: repoViews },
-    { name: "Lines of Code Changed", value: linesOfCodeChanged },
-    { name: "Total Commits", value: totalCommits.data.total_count },
-    {
-      name: "Total Pull Requests",
-      value: userData.user.pullRequests.totalCount,
-    },
-    { name: "Code Byte Total", value: codeByteTotal },
-    {
-      name: "Top Languages",
-      value: topLanguages.map((lang) => lang.languageName).join(", "),
-    },
-    { name: "Fork Count", value: forkCount },
-    { name: "Star Count", value: starCount },
-    {
-      name: "Total Contributions",
-      value: contributionsCollection.contributionCalendar.totalContributions,
-    },
-    { name: "Closed Issues", value: userData.viewer.closedIssues.totalCount },
-    { name: "Open Issues", value: userData.viewer.openIssues.totalCount },
-    { name: "Fetched At", value: fetchedAt },
+    ["Name", userDetails.data.name || ""],
+    ["Username", username],
+    ["Repository Views", repoViews],
+    ["Lines of Code Changed", linesOfCodeChanged],
+    ["Total Commits", totalCommits.data.total_count],
+    ["Total Pull Requests", userData.user.pullRequests.totalCount],
+    ["Code Byte Total", codeByteTotal],
+    ["Top Languages", topLanguages.map((lang) => lang.languageName).join(", ")],
+    ["Fork Count", forkCount],
+    ["Star Count", starCount],
+    [
+      "Total Contributions",
+      contributionsCollection.contributionCalendar.totalContributions,
+    ],
+    ["Closed Issues", userData.viewer.closedIssues.totalCount],
+    ["Open Issues", userData.viewer.openIssues.totalCount],
+    ["Fetched At", fetchedAt],
   ];
 
-  console.table(tableData);
+  const formattedTableData = tableData.map((row) => {
+    return { Name: row[0], Value: row[1] };
+  });
 
-  const tableDataString = tableData
-    .map((row) => `${row.name}: ${row.value}`)
-    .join("\n");
-  core.setOutput("tableData", tableDataString);
+  console.table(formattedTableData);
 
   writeFileSync(
     "github-user-stats.json",
@@ -505,6 +492,22 @@ try {
       4
     )
   );
+
+  // const tableDataString = tableData
+  //   .map((row) => `${row.name}: ${row.value}`)
+  //   .join("\n");
+  // core.setOutput("tableData", tableDataString);
+
+  await core.summary
+    .addHeading("Test Results")
+    .addTable([
+      [
+        { data: "Name", header: true },
+        { data: "Value", header: true },
+      ],
+      ...tableData,
+    ])
+    .write();
 } catch (error) {
   core.setFailed(error as string);
 }
