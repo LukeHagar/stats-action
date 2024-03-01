@@ -246,27 +246,20 @@ export async function getReposContributorsStats(
   username: string,
   repo: string
 ) {
-  return octokit.rest.repos
-    .getContributorsStats({
-      owner: username,
-      repo,
-    })
-    .then((res) => {
-      if (res.status === 202) {
-        setTimeout(() => {
-          return octokit.rest.repos.getContributorsStats({
-            owner: username,
-            repo,
-          });
-        }, 2000);
-      }
-      return res;
-    })
-    .catch((error) => {
-      throw new Error(
-        `Failed to fetch data for repo ${repo}: ${error.message}`
-      );
-    });
+  const response = await octokit.rest.repos.getContributorsStats({
+    owner: username,
+    repo,
+  });
+
+  if (response.status === 202) {
+    // Retry after the specified delay
+    await new Promise((resolve) => setTimeout(resolve, 2 * 1000));
+
+    // Retry the request
+    return getReposContributorsStats(octokit, username, repo);
+  } else {
+    return response;
+  }
 }
 
 export async function getReposViewCount(
@@ -338,55 +331,82 @@ try {
       getContributionCollection(octokit, userDetails.data.created_at),
     ]);
 
+  const viewCountPromises = [];
   let starCount = 0;
   let forkCount = 0;
-  for (const repo of repoData.user.repositories.nodes) {
-    starCount += repo.stargazers.totalCount;
-    forkCount += repo.forkCount;
-  }
+  let contributorStats = [];
 
-  const contributorStatsPromises = [];
-  const viewCountPromises = [];
-  for (const repo of repoData.user.repositories.nodes) {
-    if (repo.name) {
-      contributorStatsPromises.push(
-        getReposContributorsStats(octokit, username, repo.name)
-      );
+  const repos = [
+    ...repoData.user.repositories.nodes,
+    ...repoData.user.repositoriesContributedTo.nodes,
+  ];
+
+  for (const repo of repos) {
+    let repoOwner, repoName;
+
+    if (repo.nameWithOwner) {
+      [repoOwner, repoName] = repo.nameWithOwner.split("/");
+    } else {
+      repoOwner = username;
+      repoName = repo.name;
+    }
+
+    const repoContribStatsResp = await getReposContributorsStats(
+      octokit,
+      repoOwner,
+      repoName
+    );
+
+    let stats;
+
+    if (!Array.isArray(repoContribStatsResp.data)) {
+      console.log("RepoContribStats is not an array");
+      console.log(repoContribStatsResp);
+
+      stats = [repoContribStatsResp.data];
+    } else {
+      stats = repoContribStatsResp.data;
+    }
+
+    // console.log(stats);
+
+    const repoContribStats = stats.find(
+      (contributor) => contributor.author?.login === username
+    );
+
+    // console.log(repoContribStats?.weeks);
+
+    if (repoContribStats?.weeks)
+      contributorStats.push(...repoContribStats.weeks);
+
+    if (repoOwner === username) {
       viewCountPromises.push(getReposViewCount(octokit, username, repo.name));
+      starCount += repo.stargazers.totalCount;
+      forkCount += repo.forkCount;
     }
   }
-
-  for (const repo of repoData.user.repositoriesContributedTo.nodes) {
-    if (repo.name) {
-      contributorStatsPromises.push(
-        getReposContributorsStats(octokit, username, repo.name)
-      );
-    }
-  }
-
-  const contributorStats = (await Promise.allSettled(contributorStatsPromises))
-    .filter((entry) => entry !== null || entry !== undefined)
-    .map((entry) => {
-      if (entry.status === "rejected") {
-        return [];
-      }
-      return (
-        Array.isArray(entry.value.data) ? entry.value.data : [entry.value.data]
-      )
-        .filter(
-          (contributor) => contributor.author?.login === userDetails.data.login
-        )
-        .map((contributor) => contributor.weeks);
-    });
 
   let linesOfCodeChanged = 0;
+  let addedLines = 0;
+  let deletedLines = 0;
+  let changedLines = 0;
+  let testTotal = 0;
 
-  for (const repo of contributorStats) {
-    for (const week of repo) {
-      for (const day of week) {
-        linesOfCodeChanged += (day.a || 0) + (day.d || 0) + (day.c || 0);
-      }
+  for (const week of contributorStats) {
+    if (week.a) {
+      testTotal += week.a;
+      addedLines += week.a;
     }
+    if (week.d) {
+      testTotal += week.d;
+      deletedLines += week.d;
+    }
+    if (week.c) {
+      testTotal += week.c;
+      changedLines += week.c;
+    }
+
+    linesOfCodeChanged += (week.a || 0) + (week.d || 0) + (week.c || 0);
   }
 
   const viewCounts = await Promise.all(viewCountPromises);
@@ -426,6 +446,39 @@ try {
   const allDays = contributionsCollection.contributionCalendar.weeks
     .map((w) => w.contributionDays)
     .flat(1);
+
+  const tableData = [
+    { name: "Name", value: userDetails.data.name || "" },
+    { name: "Username", value: username },
+    { name: "Repository Views", value: repoViews },
+    { name: "Lines of Code Changed", value: linesOfCodeChanged },
+    { name: "Total Commits", value: totalCommits.data.total_count },
+    {
+      name: "Total Pull Requests",
+      value: userData.user.pullRequests.totalCount,
+    },
+    { name: "Code Byte Total", value: codeByteTotal },
+    {
+      name: "Top Languages",
+      value: topLanguages.map((lang) => lang.languageName).join(", "),
+    },
+    { name: "Fork Count", value: forkCount },
+    { name: "Star Count", value: starCount },
+    {
+      name: "Total Contributions",
+      value: contributionsCollection.contributionCalendar.totalContributions,
+    },
+    { name: "Closed Issues", value: userData.viewer.closedIssues.totalCount },
+    { name: "Open Issues", value: userData.viewer.openIssues.totalCount },
+    { name: "Fetched At", value: fetchedAt },
+  ];
+
+  console.table(tableData);
+
+  const tableDataString = tableData
+    .map((row) => `${row.name}: ${row.value}`)
+    .join("\n");
+  core.setOutput("tableData", tableDataString);
 
   writeFileSync(
     "github-user-stats.json",
