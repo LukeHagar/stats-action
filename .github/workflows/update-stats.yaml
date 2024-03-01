@@ -17,6 +17,9 @@ permissions:
 jobs:
   Collect-GitHub-Stats:
     runs-on: ubuntu-latest
+    concurrency:
+      group: stats-concurrency
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v3
 
