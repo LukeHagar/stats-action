@@ -45346,7 +45346,7 @@ const NOT_LANGUAGES_OBJ = Object.fromEntries(NOT_LANGUAGES.map((l) => [l, true])
 try {
     const token = process.env["GITHUB_TOKEN"];
     if (!token)
-        throw new Error("GITHUB_TOKEN is not present");
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.error("GITHUB_TOKEN is not present");
     const octokit = new ThrottledOctokit({
         auth: token,
         throttle: {
@@ -45396,16 +45396,13 @@ try {
         const repoContribStatsResp = await getReposContributorsStats(octokit, repoOwner, repoName);
         let stats;
         if (!Array.isArray(repoContribStatsResp.data)) {
-            console.log("RepoContribStats is not an array");
             console.log(repoContribStatsResp);
             stats = [repoContribStatsResp.data];
         }
         else {
             stats = repoContribStatsResp.data;
         }
-        // console.log(stats);
         const repoContribStats = stats.find((contributor) => contributor.author?.login === username);
-        // console.log(repoContribStats?.weeks);
         if (repoContribStats?.weeks)
             contributorStats.push(...repoContribStats.weeks);
         if (repoOwner === username) {
@@ -45465,35 +45462,28 @@ try {
         .map((w) => w.contributionDays)
         .flat(1);
     const tableData = [
-        { name: "Name", value: userDetails.data.name || "" },
-        { name: "Username", value: username },
-        { name: "Repository Views", value: repoViews },
-        { name: "Lines of Code Changed", value: linesOfCodeChanged },
-        { name: "Total Commits", value: totalCommits.data.total_count },
-        {
-            name: "Total Pull Requests",
-            value: userData.user.pullRequests.totalCount,
-        },
-        { name: "Code Byte Total", value: codeByteTotal },
-        {
-            name: "Top Languages",
-            value: topLanguages.map((lang) => lang.languageName).join(", "),
-        },
-        { name: "Fork Count", value: forkCount },
-        { name: "Star Count", value: starCount },
-        {
-            name: "Total Contributions",
-            value: contributionsCollection.contributionCalendar.totalContributions,
-        },
-        { name: "Closed Issues", value: userData.viewer.closedIssues.totalCount },
-        { name: "Open Issues", value: userData.viewer.openIssues.totalCount },
-        { name: "Fetched At", value: fetchedAt },
+        ["Name", userDetails.data.name || ""],
+        ["Username", username],
+        ["Repository Views", repoViews],
+        ["Lines of Code Changed", linesOfCodeChanged],
+        ["Total Commits", totalCommits.data.total_count],
+        ["Total Pull Requests", userData.user.pullRequests.totalCount],
+        ["Code Byte Total", codeByteTotal],
+        ["Top Languages", topLanguages.map((lang) => lang.languageName).join(", ")],
+        ["Fork Count", forkCount],
+        ["Star Count", starCount],
+        [
+            "Total Contributions",
+            contributionsCollection.contributionCalendar.totalContributions,
+        ],
+        ["Closed Issues", userData.viewer.closedIssues.totalCount],
+        ["Open Issues", userData.viewer.openIssues.totalCount],
+        ["Fetched At", fetchedAt],
     ];
-    console.table(tableData);
-    const tableDataString = tableData
-        .map((row) => `${row.name}: ${row.value}`)
-        .join("\n");
-    _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput("tableData", tableDataString);
+    const formattedTableData = tableData.map((row) => {
+        return { Name: row[0], Value: row[1] };
+    });
+    console.table(formattedTableData);
     (0,fs__WEBPACK_IMPORTED_MODULE_2__.writeFileSync)("github-user-stats.json", JSON.stringify({
         name: userDetails.data.name || "",
         username,
@@ -45511,6 +45501,19 @@ try {
         fetchedAt,
         contributionData: allDays,
     }, null, 4));
+    // const tableDataString = tableData
+    //   .map((row) => `${row.name}: ${row.value}`)
+    //   .join("\n");
+    // core.setOutput("tableData", tableDataString);
+    await _actions_core__WEBPACK_IMPORTED_MODULE_0__.summary.addHeading("Test Results")
+        .addTable([
+        [
+            { data: "Name", header: true },
+            { data: "Value", header: true },
+        ],
+        ...tableData,
+    ])
+        .write();
 }
 catch (error) {
     _actions_core__WEBPACK_IMPORTED_MODULE_0__.setFailed(error);
