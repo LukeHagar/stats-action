@@ -1,11 +1,11 @@
 {
     "name": "Luke Hagar",
     "username": "LukeHagar",
-    "repoViews": 1954,
+    "repoViews": 1952,
     "linesOfCodeChanged": 10702113,
     "totalCommits": 1583,
     "totalPullRequests": 48,
-    "codeByteTotal": 12557408,
+    "codeByteTotal": 12557339,
     "topLanguages": [
         {
             "languageName": "Svelte",
@@ -60,7 +60,7 @@
         {
             "languageName": "Shell",
             "color": "#89e051",
-            "value": 57244
+            "value": 57175
         },
         {
             "languageName": "MDX",
@@ -88,7 +88,7 @@
     "totalContributions": 1774,
     "closedIssues": 12,
     "openIssues": 10,
-    "fetchedAt": 1709381703780,
+    "fetchedAt": 1709385912083,
     "contributionData": [
         {
             "contributionCount": 1,
