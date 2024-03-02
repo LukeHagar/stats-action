@@ -42,7 +42,11 @@ jobs:
 
       - name: Publish or Update Draft Release
         run: |
-          gh release create --draft ${{ steps.package-info.outputs.version }}  --title "${{ steps.package-info.outputs.version }}" --generate-notes
+          if gh release view ${{ steps.package-info.outputs.version }} >/dev/null 2>&1; then
+              gh release edit ${{ steps.package-info.outputs.version }} --title "${{ steps.package-info.outputs.version }}" --generate-notes
+          else
+              gh release create --draft ${{ steps.package-info.outputs.version }} --title "${{ steps.package-info.outputs.version }}" --generate-notes
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
