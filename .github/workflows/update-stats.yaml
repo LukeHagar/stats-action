@@ -1,13 +1,13 @@
 name: GitHub Profile Stats
 
-on:
-  push:
-    branches:
-      - main
-  schedule:
-    # run everyday at 12:00 UTC
-    - cron: "0 12 * * *"
-  workflow_dispatch:
+# on:
+#   push:
+#     branches:
+#       - main
+#   schedule:
+#     # run everyday at 12:00 UTC
+#     - cron: "0 12 * * *"
+#   workflow_dispatch:
 
 permissions:
   # Give the default GITHUB_TOKEN write permission to commit and push the
