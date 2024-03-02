@@ -48,7 +48,7 @@ jobs:
 
       - name: Publish or Update Draft Release
         run: |
-          gh release create --draft ${{ steps.package-info.outputs.version }}  --title "Release ${{ steps.package-info.outputs.version }}" --notes "${{ steps.github_release.outputs.changelog }}"
+          gh release create --draft ${{ steps.package-info.outputs.version }}  --title "${{ steps.package-info.outputs.version }}" --notes "${{ steps.github_release.outputs.changelog }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
