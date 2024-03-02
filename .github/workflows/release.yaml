@@ -40,14 +40,15 @@ jobs:
         with:
           path: .
 
-      - name: Publish or Update Draft Release
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(release): ${{ steps.package-info.outputs.version }}"
+          branch: main
+
+      - name: Publish Draft Release if doesn't exist
         run: |
-          if gh release view ${{ steps.package-info.outputs.version }} >/dev/null 2>&1; then
-              gh release edit ${{ steps.package-info.outputs.version }} --title "${{ steps.package-info.outputs.version }}" --generate-notes
-          else
-              gh release create --draft ${{ steps.package-info.outputs.version }} --title "${{ steps.package-info.outputs.version }}" --generate-notes
+          if ! gh release view ${{ steps.package-info.outputs.version }} >/dev/null 2>&1; then
+                  gh release create --draft ${{ steps.package-info.outputs.version }} --title "${{ steps.package-info.outputs.version }}" --generate-notes
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: stefanzweifel/git-auto-commit-action@v5
