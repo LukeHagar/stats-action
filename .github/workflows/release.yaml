@@ -40,15 +40,9 @@ jobs:
         with:
           path: .
 
-      - name: Build Changelog
-        id: github_release
-        uses: mikepenz/release-changelog-builder-action@v4
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Publish or Update Draft Release
         run: |
-          gh release create --draft ${{ steps.package-info.outputs.version }}  --title "${{ steps.package-info.outputs.version }}" --notes "${{ steps.github_release.outputs.changelog }}"
+          gh release create --draft ${{ steps.package-info.outputs.version }}  --title "${{ steps.package-info.outputs.version }}" --generate-notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
