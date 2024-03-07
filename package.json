@@ -14,7 +14,7 @@
   "scripts": {
     "run": "yarn build && yarn start",
     "build": "tsc && ncc build lib/index.js",
-    "start": "node lib/index.js",
+    "start": "node dist/index.js",
     "patch": "yarn version --patch",
     "minor": "yarn version --minor",
     "major": "yarn version --major"
