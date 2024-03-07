@@ -261,6 +261,7 @@ const NOT_LANGUAGES_OBJ = Object.fromEntries(
 );
 
 try {
+  const setup1 = performance.now();
   const token = process.env["GITHUB_TOKEN"];
   if (!token) core.error("GITHUB_TOKEN is not present");
 
@@ -292,7 +293,14 @@ try {
 
   const fetchedAt = Date.now();
 
+  const setup2 = performance.now();
+
+  console.log(`Setup time: ${setup2 - setup1}ms`);
+
+  const main1 = performance.now();
+
   const userDetails = await octokit.rest.users.getAuthenticated();
+
   const username = userDetails.data.login;
   const [userData, repoData, totalCommits, contributionsCollection] =
     await Promise.all([
@@ -302,6 +310,10 @@ try {
       getContributionCollection(octokit, userDetails.data.created_at),
     ]);
 
+  const main2 = performance.now();
+
+  console.log(`Main time: ${main2 - main1}ms`);
+
   const viewCountPromises = [];
   let starCount = 0;
   let forkCount = 0;
@@ -309,6 +321,9 @@ try {
   let contributorStats = [];
 
   const repos = repoData.user.repositories.nodes;
+
+  const promisesCreate1 = performance.now();
+  const promisesResolve1 = performance.now();
 
   for (const repo of repos) {
     let repoOwner, repoName;
@@ -331,7 +346,19 @@ try {
     }
   }
 
+  const promisesCreate2 = performance.now();
+
+  console.log(`Promises create time: ${promisesCreate2 - promisesCreate1}ms`);
+
   const repoContribStatsResps = await Promise.all(contribStatsPromises);
+
+  const promisesResolve2 = performance.now();
+
+  console.log(
+    `Promises resolve time: ${promisesResolve2 - promisesResolve1}ms`
+  );
+
+  const parseRepoPromises1 = performance.now();
 
   for (const resp of repoContribStatsResps) {
     if (!resp) {
@@ -354,6 +381,14 @@ try {
     if (repoContribStats?.weeks)
       contributorStats.push(...repoContribStats.weeks);
   }
+
+  const parseRepoPromises2 = performance.now();
+
+  console.log(
+    `Parse repo promises time: ${parseRepoPromises2 - parseRepoPromises1}ms`
+  );
+
+  const parseLines1 = performance.now();
 
   let linesOfCodeChanged = 0;
   let addedLines = 0;
@@ -378,12 +413,24 @@ try {
     linesOfCodeChanged += (week.a || 0) + (week.d || 0) + (week.c || 0);
   }
 
+  const parseLines2 = performance.now();
+
+  console.log(`Parse lines time: ${parseLines2 - parseLines1}ms`);
+
+  const parseViews1 = performance.now();
+
   const viewCounts = await Promise.all(viewCountPromises);
 
   let repoViews = 0;
   for (const viewCount of viewCounts) {
     repoViews += viewCount.data.count;
   }
+
+  const parseViews2 = performance.now();
+
+  console.log(`Parse views time: ${parseViews2 - parseViews1}ms`);
+
+  const parseLang1 = performance.now();
 
   const topLanguages: Language[] = [];
   let codeByteTotal = 0;
@@ -411,6 +458,10 @@ try {
       }
     }
   }
+
+  const parseLang2 = performance.now();
+
+  console.log(`Parse languages time: ${parseLang2 - parseLang1}ms`);
 
   const tableData = [
     ["Name", userDetails.data.name || ""],
@@ -443,6 +494,7 @@ try {
     JSON.stringify(
       {
         name: userDetails.data.name || "",
+        avatarUrl: userDetails.data.avatar_url,
         username,
         repoViews,
         linesOfCodeChanged,
