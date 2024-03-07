@@ -45398,21 +45398,19 @@ try {
     let addedLines = 0;
     let deletedLines = 0;
     let changedLines = 0;
-    let testTotal = 0;
     for (const week of contributorStats) {
         if (week.a) {
-            testTotal += week.a;
+            linesOfCodeChanged += week.a;
             addedLines += week.a;
         }
         if (week.d) {
-            testTotal += week.d;
+            linesOfCodeChanged += week.d;
             deletedLines += week.d;
         }
         if (week.c) {
-            testTotal += week.c;
+            linesOfCodeChanged += week.c;
             changedLines += week.c;
         }
-        linesOfCodeChanged += (week.a || 0) + (week.d || 0) + (week.c || 0);
     }
     const parseLines2 = performance.now();
     console.log(`Parse lines time: ${parseLines2 - parseLines1}ms`);
@@ -45454,6 +45452,9 @@ try {
         ["Username", username],
         ["Repository Views", repoViews],
         ["Lines of Code Changed", linesOfCodeChanged],
+        ["Lines Added", addedLines],
+        ["Lines Deleted", deletedLines],
+        ["Lines Changed", changedLines],
         ["Total Commits", totalCommits.data.total_count],
         ["Total Pull Requests", userData.user.pullRequests.totalCount],
         ["Code Byte Total", codeByteTotal],
@@ -45478,6 +45479,9 @@ try {
         username,
         repoViews,
         linesOfCodeChanged,
+        linesAdded: addedLines,
+        linesDeleted: deletedLines,
+        linesChanged: changedLines,
         totalCommits: totalCommits.data.total_count,
         totalPullRequests: userData.user.pullRequests.totalCount,
         codeByteTotal,
