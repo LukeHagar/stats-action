@@ -45490,7 +45490,7 @@ try {
         openIssues: userData.user.openIssues.totalCount,
         fetchedAt,
     }, null, 4));
-    if (process.env["GITHUB_WORKFLOW"] === "CI")
+    if (process.env["GITHUB_WORKFLOW"])
         await _actions_core__WEBPACK_IMPORTED_MODULE_0__.summary.addHeading("Test Results")
             .addTable([
             [
