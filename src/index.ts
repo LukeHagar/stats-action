@@ -21,12 +21,22 @@ export async function getUserData(
         pullRequests(first: 1) {
           totalCount
         }
-      }
-      viewer {
+        repositoriesContributedTo(first: 1, contributionTypes: [COMMIT, ISSUE, PULL_REQUEST, REPOSITORY]) {
+          totalCount
+        }
         openIssues: issues(states: OPEN) {
           totalCount
         }
         closedIssues: issues(states: CLOSED) {
+          totalCount
+        }
+        followers {
+          totalCount
+        }
+        repositoryDiscussions {
+          totalCount
+        }
+        repositoryDiscussionComments(onlyAnswers: true) {
           totalCount
         }
       }
@@ -53,8 +63,8 @@ export async function getRepoData(
         repositories(
           orderBy: {field: STARGAZERS, direction: DESC}
           ownerAffiliations: OWNER
-          isFork: false
           first: 100
+          after: $cursor
         ) {
           totalCount
           nodes {
@@ -76,34 +86,6 @@ export async function getRepoData(
           pageInfo {
             endCursor
             hasNextPage
-          }
-        }
-        repositoriesContributedTo(
-          first: 100
-          includeUserRepositories: false
-          orderBy: {field: STARGAZERS, direction: DESC}
-          contributionTypes: [COMMIT, PULL_REQUEST, REPOSITORY, PULL_REQUEST_REVIEW]
-          after: $cursor
-        ) {
-          pageInfo {
-            hasNextPage
-            endCursor
-          }
-          nodes {
-            nameWithOwner
-            stargazers {
-              totalCount
-            }
-            forkCount
-            languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
-              edges {
-                size
-                node {
-                  name
-                  color
-                }
-              }
-            }
           }
         }
       }
@@ -134,67 +116,37 @@ export async function getContributionCollection(
             viewer: { contributionsCollection: ContributionsCollection };
           }>
         >(
-          `query {
+          `{
             rateLimit {
               limit
               remaining
               used
               resetAt
             }
-        viewer {
-          contributionsCollection(from: "${startYear}", to: "${endYear}") {
-            totalCommitContributions
-            restrictedContributionsCount
-            totalIssueContributions
-            totalCommitContributions
-            totalRepositoryContributions
-            totalPullRequestContributions
-            totalPullRequestReviewContributions
-            popularPullRequestContribution {
-              pullRequest {
-                id
-                title
-                repository {
-                  name
-                  owner {
-                    login
-                  }
-                }
-              }
-            }
-            contributionCalendar {
-              totalContributions
-              weeks {
-                contributionDays {
-                  contributionCount
-                  date
-                }
-              }
-            }
-            commitContributionsByRepository {
-              contributions {
-                totalCount
-              }
-              repository {
-                name
-                owner {
-                  login
-                }
-                languages(first: 5, orderBy: { field: SIZE, direction: DESC }) {
-                  edges {
-                    size
-                    node {
-                      color
-                      name
-                      id
+            viewer {
+              contributionsCollection(
+                from: "${startYear}"
+                to: "${endYear}"
+              ) {
+                totalCommitContributions
+                restrictedContributionsCount
+                totalIssueContributions
+                totalCommitContributions
+                totalRepositoryContributions
+                totalPullRequestContributions
+                totalPullRequestReviewContributions
+                contributionCalendar {
+                  totalContributions
+                  weeks {
+                    contributionDays {
+                      contributionCount
+                      date
                     }
                   }
                 }
               }
             }
           }
-        }
-      }
     `
         )
         .catch((error) => {
@@ -214,16 +166,30 @@ export async function getContributionCollection(
   const { contributionsCollection } = years[0].viewer;
 
   for (const year of years.slice(1)) {
-    contributionsCollection.commitContributionsByRepository = [
-      ...contributionsCollection.commitContributionsByRepository,
-      ...year.viewer.contributionsCollection.commitContributionsByRepository,
-    ];
     contributionsCollection.contributionCalendar.totalContributions +=
       year.viewer.contributionsCollection.contributionCalendar.totalContributions;
-    contributionsCollection.contributionCalendar.weeks = [
-      ...contributionsCollection.contributionCalendar.weeks,
-      ...year.viewer.contributionsCollection.contributionCalendar.weeks,
-    ];
+
+    contributionsCollection.contributionCalendar.weeks.push(
+      ...year.viewer.contributionsCollection.contributionCalendar.weeks
+    );
+
+    contributionsCollection.totalCommitContributions +=
+      year.viewer.contributionsCollection.totalCommitContributions;
+
+    contributionsCollection.restrictedContributionsCount +=
+      year.viewer.contributionsCollection.restrictedContributionsCount;
+
+    contributionsCollection.totalIssueContributions +=
+      year.viewer.contributionsCollection.totalIssueContributions;
+
+    contributionsCollection.totalRepositoryContributions +=
+      year.viewer.contributionsCollection.totalRepositoryContributions;
+
+    contributionsCollection.totalPullRequestContributions +=
+      year.viewer.contributionsCollection.totalPullRequestContributions;
+
+    contributionsCollection.totalPullRequestReviewContributions +=
+      year.viewer.contributionsCollection.totalPullRequestReviewContributions;
   }
 
   return contributionsCollection;
@@ -246,19 +212,24 @@ export async function getReposContributorsStats(
   username: string,
   repo: string
 ) {
-  const response = await octokit.rest.repos.getContributorsStats({
-    owner: username,
-    repo,
-  });
+  try {
+    const response = await octokit.rest.repos.getContributorsStats({
+      owner: username,
+      repo,
+    });
 
-  if (response.status === 202) {
-    // Retry after the specified delay
-    await new Promise((resolve) => setTimeout(resolve, 2 * 1000));
+    if (response.status === 202) {
+      // Retry after the specified delay
+      await new Promise((resolve) => setTimeout(resolve, 2 * 1000));
 
-    // Retry the request
-    return getReposContributorsStats(octokit, username, repo);
-  } else {
-    return response;
+      // Retry the request
+      return getReposContributorsStats(octokit, username, repo);
+    } else {
+      return response;
+    }
+  } catch (error) {
+    console.error(error);
+    return undefined;
   }
 }
 
@@ -334,12 +305,10 @@ try {
   const viewCountPromises = [];
   let starCount = 0;
   let forkCount = 0;
+  let contribStatsPromises = [];
   let contributorStats = [];
 
-  const repos = [
-    ...repoData.user.repositories.nodes,
-    ...repoData.user.repositoriesContributedTo.nodes,
-  ];
+  const repos = repoData.user.repositories.nodes;
 
   for (const repo of repos) {
     let repoOwner, repoName;
@@ -351,19 +320,31 @@ try {
       repoName = repo.name;
     }
 
-    const repoContribStatsResp = await getReposContributorsStats(
-      octokit,
-      repoOwner,
-      repoName
+    contribStatsPromises.push(
+      getReposContributorsStats(octokit, repoOwner, repoName)
     );
+
+    if (repoOwner === username) {
+      viewCountPromises.push(getReposViewCount(octokit, username, repoName));
+      starCount += repo.stargazers.totalCount;
+      forkCount += repo.forkCount;
+    }
+  }
+
+  const repoContribStatsResps = await Promise.all(contribStatsPromises);
+
+  for (const resp of repoContribStatsResps) {
+    if (!resp) {
+      continue;
+    }
 
     let stats;
 
-    if (!Array.isArray(repoContribStatsResp.data)) {
-      console.log(repoContribStatsResp);
-      stats = [repoContribStatsResp.data];
+    if (!Array.isArray(resp.data)) {
+      console.log(resp);
+      stats = [resp.data];
     } else {
-      stats = repoContribStatsResp.data;
+      stats = resp.data;
     }
 
     const repoContribStats = stats.find(
@@ -372,12 +353,6 @@ try {
 
     if (repoContribStats?.weeks)
       contributorStats.push(...repoContribStats.weeks);
-
-    if (repoOwner === username) {
-      viewCountPromises.push(getReposViewCount(octokit, username, repo.name));
-      starCount += repo.stargazers.totalCount;
-      forkCount += repo.forkCount;
-    }
   }
 
   let linesOfCodeChanged = 0;
@@ -437,10 +412,6 @@ try {
     }
   }
 
-  const allDays = contributionsCollection.contributionCalendar.weeks
-    .map((w) => w.contributionDays)
-    .flat(1);
-
   const tableData = [
     ["Name", userDetails.data.name || ""],
     ["Username", username],
@@ -456,8 +427,8 @@ try {
       "Total Contributions",
       contributionsCollection.contributionCalendar.totalContributions,
     ],
-    ["Closed Issues", userData.viewer.closedIssues.totalCount],
-    ["Open Issues", userData.viewer.openIssues.totalCount],
+    ["Closed Issues", userData.user.closedIssues.totalCount],
+    ["Open Issues", userData.user.openIssues.totalCount],
     ["Fetched At", fetchedAt],
   ];
 
@@ -483,31 +454,27 @@ try {
         starCount,
         totalContributions:
           contributionsCollection.contributionCalendar.totalContributions,
-        closedIssues: userData.viewer.closedIssues.totalCount,
-        openIssues: userData.viewer.openIssues.totalCount,
+        contributionsCollection,
+        closedIssues: userData.user.closedIssues.totalCount,
+        openIssues: userData.user.openIssues.totalCount,
         fetchedAt,
-        contributionData: allDays,
       },
       null,
       4
     )
   );
 
-  // const tableDataString = tableData
-  //   .map((row) => `${row.name}: ${row.value}`)
-  //   .join("\n");
-  // core.setOutput("tableData", tableDataString);
-
-  await core.summary
-    .addHeading("Test Results")
-    .addTable([
-      [
-        { data: "Name", header: true },
-        { data: "Value", header: true },
-      ],
-      ...tableData.map((row) => [String(row[0]), String(row[1])]),
-    ])
-    .write();
+  if (process.env["GITHUB_WORKFLOW"] === "CI")
+    await core.summary
+      .addHeading("Test Results")
+      .addTable([
+        [
+          { data: "Name", header: true },
+          { data: "Value", header: true },
+        ],
+        ...tableData.map((row) => [String(row[0]), String(row[1])]),
+      ])
+      .write();
 } catch (error) {
   core.setFailed(error as string);
 }
