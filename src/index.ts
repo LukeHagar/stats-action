@@ -516,7 +516,7 @@ try {
     )
   );
 
-  if (process.env["GITHUB_WORKFLOW"]) {
+  if (process.env["GITHUB_WORKFLOW"])
     await core.summary
       .addHeading("Test Results")
       .addTable([
