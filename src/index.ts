@@ -375,7 +375,7 @@ try {
     }
 
     const repoContribStats = stats.find(
-      (contributor) => contributor.author?.login === username
+      (contributor) => contributor?.author?.login === username
     );
 
     if (repoContribStats?.weeks)
