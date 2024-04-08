@@ -45387,7 +45387,7 @@ try {
         else {
             stats = resp.data;
         }
-        const repoContribStats = stats.find((contributor) => contributor.author?.login === username);
+        const repoContribStats = stats.find((contributor) => contributor?.author?.login === username);
         if (repoContribStats?.weeks)
             contributorStats.push(...repoContribStats.weeks);
     }
