@@ -1,2 +1,3 @@
-# stats
-A github action to grab github stats for further processing
+# GitHub Stats Action
+
+A GitHub action to automate the collection of stats for a users GitHub profile.
