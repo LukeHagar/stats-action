@@ -1,26 +1,21 @@
 {
   "name": "github-profile-stats",
   "private": true,
-  "version": "0.0.5",
+  "version": "0.0.6",
+  "type": "module",
   "dependencies": {
     "@actions/core": "^1.10.1",
     "@actions/github": "^6.0.0",
     "@octokit/action": "^6.0.7",
-    "@vercel/ncc": "^0.38.1",
     "dotenv": "^16.4.5",
-    "octokit": "^3.1.2",
-    "typescript": "^5.3.3"
+    "octokit": "^3.1.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
   },
   "scripts": {
-    "br": "yarn build && yarn start",
-    "build": "tsc && ncc build lib/index.js",
-    "start": "node dist/index.js",
-    "patch": "yarn version --patch",
-    "minor": "yarn version --minor",
-    "major": "yarn version --major"
-  },
-  "type": "module",
-  "devDependencies": {
-    "@types/node": "^20.11.20"
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "typecheck": "bun x tsc --noEmit"
   }
 }
