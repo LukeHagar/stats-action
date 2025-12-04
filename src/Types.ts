@@ -71,9 +71,61 @@ export type RepoDetails = {
   stars: number;
   forks: number;
   isArchived: boolean;
+  isFork: boolean;
+  isPrivate: boolean;
   primaryLanguage: string | null;
+  topics: string[];
   updatedAt: string;
   createdAt: string;
+};
+
+export type RepoStats = {
+  totalRepos: number;
+  publicRepos: number;
+  privateRepos: number;
+  archivedRepos: number;
+  forkedRepos: number;
+  originalRepos: number;
+  activeRepos: number;
+  reposWithStars: number;
+  reposCreatedThisYear: number;
+  averageStarsPerRepo: number;
+};
+
+export type TopicCount = {
+  name: string;
+  count: number;
+};
+
+export type ComputedStats = {
+  // Repo statistics
+  totalRepos: number;
+  publicRepos: number;
+  privateRepos: number;
+  archivedRepos: number;
+  forkedRepos: number;
+  originalRepos: number;
+  activeRepos: number;
+  reposWithStars: number;
+  reposCreatedThisYear: number;
+  averageStarsPerRepo: number;
+
+  // Language statistics
+  languageCount: number;
+  primaryLanguage: string | null;
+  primaryLanguageThisYear: string | null;
+  topLanguagesThisYear: Language[];
+
+  // Topic statistics
+  totalTopics: number;
+  topTopics: TopicCount[];
+  allTopics: string[];
+
+  // Contribution statistics
+  contributionsThisYear: number;
+  contributionsLastYear: number;
+  yearOverYearGrowth: number | null;
+  mostProductiveMonth: { month: string; contributions: number } | null;
 };
 
 export type UserStats = {
@@ -110,6 +162,8 @@ export type UserStats = {
   codeByteTotal: number;
   topLanguages: Language[];
   contributionStats: ContributionStats;
+  repoStats: RepoStats;
+  computedStats: ComputedStats;
   contributionsCollection: ContributionsCollection;
   topRepos: RepoDetails[];
 };

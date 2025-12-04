@@ -4,9 +4,9 @@ import {
   formatNumber,
   aggregateLanguages,
   calculateContributionStats,
-  processBatched,
+  calculateComputedStats,
 } from "./index";
-import type { ContributionsCollection } from "./Types";
+import type { ContributionsCollection, Language, ContributionStats } from "./Types";
 
 describe("formatBytes", () => {
   test("formats bytes correctly", () => {
@@ -202,50 +202,135 @@ describe("calculateContributionStats", () => {
   });
 });
 
-describe("processBatched", () => {
-  test("processes items in batches", async () => {
-    const items = [1, 2, 3, 4, 5];
-    const processedOrder: number[] = [];
+describe("calculateComputedStats", () => {
+  const currentYear = new Date().getFullYear();
+  const lastYear = currentYear - 1;
 
-    const results = await processBatched(items, 2, async (item) => {
-      processedOrder.push(item);
-      return item * 2;
+  const createRepoInfo = (overrides: Partial<{
+    stars: number;
+    forks: number;
+    isArchived: boolean;
+    isFork: boolean;
+    isPrivate: boolean;
+    topics: string[];
+    updatedAt: string;
+    createdAt: string;
+    languages: { edges: Array<{ size: number; node: { name: string; color: string } }> };
+  }> = {}) => ({
+    stars: 0,
+    forks: 0,
+    isArchived: false,
+    isFork: false,
+    isPrivate: false,
+    topics: [],
+    updatedAt: `${currentYear}-06-01T00:00:00Z`,
+    createdAt: `${lastYear}-01-01T00:00:00Z`,
+    languages: { edges: [] },
+    ...overrides,
+  });
+
+  const createContributionStats = (monthlyBreakdown: Array<{ month: string; contributions: number }>): ContributionStats => ({
+    longestStreak: 0,
+    currentStreak: 0,
+    mostActiveDay: "Monday",
+    averagePerDay: 0,
+    averagePerWeek: 0,
+    averagePerMonth: 0,
+    monthlyBreakdown,
+  });
+
+  test("calculates repo statistics correctly", () => {
+    const repos = [
+      createRepoInfo({ stars: 10, isPrivate: false }),
+      createRepoInfo({ stars: 5, isPrivate: true }),
+      createRepoInfo({ isArchived: true }),
+      createRepoInfo({ isFork: true }),
+      createRepoInfo({ updatedAt: `${currentYear}-01-15T00:00:00Z` }),
+      createRepoInfo({ createdAt: `${currentYear}-03-01T00:00:00Z`, updatedAt: `${currentYear}-03-01T00:00:00Z` }),
+    ];
+
+    const stats = calculateComputedStats(repos, [], createContributionStats([]));
+
+    expect(stats.totalRepos).toBe(6);
+    expect(stats.publicRepos).toBe(5);
+    expect(stats.privateRepos).toBe(1);
+    expect(stats.archivedRepos).toBe(1);
+    expect(stats.forkedRepos).toBe(1);
+    expect(stats.originalRepos).toBe(5);
+    expect(stats.reposWithStars).toBe(2);
+    expect(stats.reposCreatedThisYear).toBe(1);
+    expect(stats.averageStarsPerRepo).toBe(2.5); // 15 stars / 6 repos
+  });
+
+  test("calculates language statistics correctly", () => {
+    const topLanguages: Language[] = [
+      { languageName: "TypeScript", color: "#3178c6", value: 1000, percentage: 50 },
+      { languageName: "JavaScript", color: "#f1e05a", value: 500, percentage: 25 },
+      { languageName: "Python", color: "#3572A5", value: 500, percentage: 25 },
+    ];
+
+    const stats = calculateComputedStats([], topLanguages, createContributionStats([]));
+
+    expect(stats.languageCount).toBe(3);
+    expect(stats.primaryLanguage).toBe("TypeScript");
+  });
+
+  test("calculates year over year growth correctly", () => {
+    const contributionStats = createContributionStats([
+      { month: `${lastYear}-01`, contributions: 50 },
+      { month: `${lastYear}-02`, contributions: 50 },
+      { month: `${currentYear}-01`, contributions: 75 },
+      { month: `${currentYear}-02`, contributions: 75 },
+    ]);
+
+    const stats = calculateComputedStats([], [], contributionStats);
+
+    expect(stats.contributionsLastYear).toBe(100);
+    expect(stats.contributionsThisYear).toBe(150);
+    expect(stats.yearOverYearGrowth).toBe(50); // 50% growth
+  });
+
+  test("identifies most productive month", () => {
+    const contributionStats = createContributionStats([
+      { month: `${currentYear}-01`, contributions: 50 },
+      { month: `${currentYear}-02`, contributions: 150 },
+      { month: `${currentYear}-03`, contributions: 75 },
+    ]);
+
+    const stats = calculateComputedStats([], [], contributionStats);
+
+    expect(stats.mostProductiveMonth).toEqual({
+      month: `${currentYear}-02`,
+      contributions: 150,
     });
-
-    expect(results).toHaveLength(5);
-    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(5);
-
-    const values = results
-      .filter((r): r is PromiseFulfilledResult<number> => r.status === "fulfilled")
-      .map((r) => r.value);
-    expect(values).toEqual([2, 4, 6, 8, 10]);
   });
 
-  test("handles errors gracefully with Promise.allSettled", async () => {
-    const items = [1, 2, 3];
+  test("handles empty data gracefully", () => {
+    const stats = calculateComputedStats([], [], createContributionStats([]));
 
-    const results = await processBatched(items, 2, async (item) => {
-      if (item === 2) throw new Error("Test error");
-      return item;
-    });
-
-    expect(results).toHaveLength(3);
-    expect(results[0].status).toBe("fulfilled");
-    expect(results[1].status).toBe("rejected");
-    expect(results[2].status).toBe("fulfilled");
+    expect(stats.totalRepos).toBe(0);
+    expect(stats.languageCount).toBe(0);
+    expect(stats.primaryLanguage).toBe(null);
+    expect(stats.yearOverYearGrowth).toBe(null);
+    expect(stats.mostProductiveMonth).toBe(null);
+    expect(stats.totalTopics).toBe(0);
+    expect(stats.topTopics).toHaveLength(0);
   });
 
-  test("processes single batch correctly", async () => {
-    const items = [1, 2, 3];
+  test("aggregates topics correctly", () => {
+    const repos = [
+      createRepoInfo({ topics: ["typescript", "github-action", "automation"] }),
+      createRepoInfo({ topics: ["typescript", "cli"] }),
+      createRepoInfo({ topics: ["python", "automation"] }),
+    ];
 
-    const results = await processBatched(items, 10, async (item) => item);
+    const stats = calculateComputedStats(repos, [], createContributionStats([]));
 
-    expect(results).toHaveLength(3);
-  });
-
-  test("handles empty array", async () => {
-    const results = await processBatched([], 5, async (item: number) => item);
-    expect(results).toHaveLength(0);
+    expect(stats.totalTopics).toBe(5);
+    expect(stats.allTopics).toEqual(["automation", "cli", "github-action", "python", "typescript"]);
+    
+    // Top topics should be sorted by count
+    expect(stats.topTopics[0]).toEqual({ name: "typescript", count: 2 });
+    expect(stats.topTopics[1]).toEqual({ name: "automation", count: 2 });
   });
 });
-

@@ -9,15 +9,17 @@ import {
   ContributionStats,
   MonthlyContribution,
   RepoDetails,
+  RepoStats,
+  ComputedStats,
+  TopicCount,
 } from "./Types";
 import type { GraphQlQueryResponseData } from "@octokit/graphql";
 
 const ThrottledOctokit = Octokit.plugin(throttling);
 
 // Constants
-const MAX_RETRY_COUNT = 5;
-const BATCH_SIZE = 10;
-const RETRY_DELAY_MS = 2000;
+const MAX_RETRY_COUNT = 10;
+const RETRY_DELAY_MS = 1000;
 
 /**
  * Log rate limit information from GraphQL response
@@ -28,25 +30,6 @@ function logRateLimit(rateLimit: RateLimitInfo | undefined, context: string) {
       `[Rate Limit] ${context}: ${rateLimit.remaining}/${rateLimit.limit} remaining (resets at ${rateLimit.resetAt})`
     );
   }
-}
-
-/**
- * Process promises in batches to avoid overwhelming the API
- */
-export async function processBatched<T, R>(
-  items: T[],
-  batchSize: number,
-  processor: (item: T) => Promise<R>
-): Promise<PromiseSettledResult<R>[]> {
-  const results: PromiseSettledResult<R>[] = [];
-
-  for (let i = 0; i < items.length; i += batchSize) {
-    const batch = items.slice(i, i + batchSize);
-    const batchResults = await Promise.allSettled(batch.map(processor));
-    results.push(...batchResults);
-  }
-
-  return results;
 }
 
 /**
@@ -131,6 +114,8 @@ export async function getRepoData(
             name
             description
             isArchived
+            isFork
+            isPrivate
             createdAt
             updatedAt
             stargazers {
@@ -140,6 +125,13 @@ export async function getRepoData(
             primaryLanguage {
               name
               color
+            }
+            repositoryTopics(first: 20) {
+              nodes {
+                topic {
+                  name
+                }
+              }
             }
             languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
               edges {
@@ -300,8 +292,6 @@ export async function getUsersStars(octokit: Octokit, username: string) {
     username,
     per_page: 1,
   });
-  // The total count is in the Link header or we can make a request with per_page=1
-  // and check the last page. For simplicity, we'll count from headers if available.
   const linkHeader = response.headers.link;
   if (linkHeader) {
     const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
@@ -313,7 +303,7 @@ export async function getUsersStars(octokit: Octokit, username: string) {
 }
 
 /**
- * Get contributor stats for a repo with retry limit
+ * Get contributor stats for a repo with retry logic for 202 responses
  */
 export async function getReposContributorsStats(
   octokit: Octokit,
@@ -329,9 +319,7 @@ export async function getReposContributorsStats(
 
     if (response.status === 202) {
       if (retryCount >= MAX_RETRY_COUNT) {
-        console.warn(
-          `Max retries (${MAX_RETRY_COUNT}) reached for ${owner}/${repo}, skipping`
-        );
+        console.warn(`Max retries reached for ${owner}/${repo}, skipping`);
         return undefined;
       }
 
@@ -422,7 +410,6 @@ export function calculateContributionStats(
     if (allDays[i].count > 0) {
       currentStreak++;
     } else if (allDays[i].date !== today) {
-      // Allow today to have 0 if we're still on today
       break;
     }
   }
@@ -504,6 +491,123 @@ export function aggregateLanguages(
 }
 
 /**
+ * Calculate computed stats from existing data (no API calls)
+ */
+export function calculateComputedStats(
+  repoInfoList: Array<{
+    stars: number;
+    forks: number;
+    isArchived: boolean;
+    isFork: boolean;
+    isPrivate: boolean;
+    topics: string[];
+    updatedAt: string;
+    createdAt: string;
+    languages: { edges: Array<{ size: number; node: { name: string; color: string } }> };
+  }>,
+  topLanguages: Language[],
+  contributionStats: ContributionStats
+): ComputedStats {
+  const currentYear = new Date().getFullYear();
+  const currentYearStr = `${currentYear}`;
+  const lastYearStr = `${currentYear - 1}`;
+
+  // Repo statistics
+  const totalRepos = repoInfoList.length;
+  const publicRepos = repoInfoList.filter((r) => !r.isPrivate).length;
+  const privateRepos = repoInfoList.filter((r) => r.isPrivate).length;
+  const archivedRepos = repoInfoList.filter((r) => r.isArchived).length;
+  const forkedRepos = repoInfoList.filter((r) => r.isFork).length;
+  const originalRepos = totalRepos - forkedRepos;
+  const activeRepos = repoInfoList.filter((r) => r.updatedAt.startsWith(currentYearStr)).length;
+  const reposWithStars = repoInfoList.filter((r) => r.stars > 0).length;
+  const reposCreatedThisYear = repoInfoList.filter((r) => r.createdAt.startsWith(currentYearStr)).length;
+
+  // Star statistics
+  const totalStars = repoInfoList.reduce((sum, r) => sum + r.stars, 0);
+  const averageStarsPerRepo = totalRepos > 0 ? Math.round((totalStars / totalRepos) * 100) / 100 : 0;
+
+  // Language statistics
+  const languageCount = topLanguages.length;
+  const primaryLanguage = topLanguages[0]?.languageName || null;
+
+  // Filter repos active this year for language calculation
+  const reposThisYear = repoInfoList.filter((r) => r.updatedAt.startsWith(currentYearStr));
+  const { languages: languagesThisYear } = aggregateLanguages(reposThisYear);
+  const topLanguagesThisYear = languagesThisYear.slice(0, 10);
+  const primaryLanguageThisYear = topLanguagesThisYear[0]?.languageName || null;
+
+  // Contribution statistics from monthly breakdown
+  const contributionsThisYear = contributionStats.monthlyBreakdown
+    .filter((m) => m.month.startsWith(currentYearStr))
+    .reduce((sum, m) => sum + m.contributions, 0);
+
+  const contributionsLastYear = contributionStats.monthlyBreakdown
+    .filter((m) => m.month.startsWith(lastYearStr))
+    .reduce((sum, m) => sum + m.contributions, 0);
+
+  // Year over year growth
+  const yearOverYearGrowth = contributionsLastYear > 0
+    ? Math.round(((contributionsThisYear - contributionsLastYear) / contributionsLastYear) * 10000) / 100
+    : null;
+
+  // Most productive month
+  let mostProductiveMonth: { month: string; contributions: number } | null = null;
+  for (const m of contributionStats.monthlyBreakdown) {
+    if (!mostProductiveMonth || m.contributions > mostProductiveMonth.contributions) {
+      mostProductiveMonth = m;
+    }
+  }
+
+  // Topic statistics
+  const topicCountMap = new Map<string, number>();
+  const allTopicsSet = new Set<string>();
+  for (const repo of repoInfoList) {
+    for (const topic of repo.topics) {
+      topicCountMap.set(topic, (topicCountMap.get(topic) || 0) + 1);
+      allTopicsSet.add(topic);
+    }
+  }
+  const topTopics: TopicCount[] = Array.from(topicCountMap.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
+  const allTopics = Array.from(allTopicsSet).sort();
+  const totalTopics = allTopics.length;
+
+  return {
+    // Repo stats
+    totalRepos,
+    publicRepos,
+    privateRepos,
+    archivedRepos,
+    forkedRepos,
+    originalRepos,
+    activeRepos,
+    reposWithStars,
+    reposCreatedThisYear,
+    averageStarsPerRepo,
+
+    // Language stats
+    languageCount,
+    primaryLanguage,
+    primaryLanguageThisYear,
+    topLanguagesThisYear,
+
+    // Topic stats
+    totalTopics,
+    topTopics,
+    allTopics,
+
+    // Contribution stats
+    contributionsThisYear,
+    contributionsLastYear,
+    yearOverYearGrowth,
+    mostProductiveMonth,
+  };
+}
+
+/**
  * Format bytes to human-readable string
  */
 export function formatBytes(bytes: number): string {
@@ -536,16 +640,12 @@ async function main() {
   const octokit = new ThrottledOctokit({
     auth: token,
     throttle: {
-      onRateLimit: (retryAfter, options, octokit, retryCount) => {
+      onRateLimit: (retryAfter, options, octokit) => {
         octokit.log.warn(
           `Request quota exhausted for request ${options.method} ${options.url}`
         );
-
-        if (retryCount < 1) {
-          octokit.log.info(`Retrying after ${retryAfter} seconds!`);
-          return true;
-        }
-        return false;
+        octokit.log.info(`Retrying after ${retryAfter} seconds!`);
+        return true; // Always retry on rate limit
       },
       onSecondaryRateLimit: (retryAfter, options, octokit) => {
         octokit.log.warn(
@@ -591,9 +691,13 @@ async function main() {
     forks: number;
     description: string | null;
     isArchived: boolean;
+    isFork: boolean;
+    isPrivate: boolean;
     primaryLanguage: string | null;
+    topics: string[];
     updatedAt: string;
     createdAt: string;
+    languages: { edges: Array<{ size: number; node: { name: string; color: string } }> };
   }
 
   const repoInfoList: RepoInfo[] = repos.map((repo: {
@@ -603,9 +707,13 @@ async function main() {
     forkCount: number;
     description: string | null;
     isArchived: boolean;
+    isFork: boolean;
+    isPrivate: boolean;
     primaryLanguage: { name: string } | null;
+    repositoryTopics: { nodes: Array<{ topic: { name: string } }> };
     updatedAt: string;
     createdAt: string;
+    languages: { edges: Array<{ size: number; node: { name: string; color: string } }> };
   }) => {
     let repoOwner: string;
     let repoName: string;
@@ -631,32 +739,34 @@ async function main() {
       forks: repo.forkCount,
       description: repo.description,
       isArchived: repo.isArchived,
+      isFork: repo.isFork,
+      isPrivate: repo.isPrivate,
       primaryLanguage: repo.primaryLanguage?.name || null,
+      topics: repo.repositoryTopics.nodes.map((n) => n.topic.name),
       updatedAt: repo.updatedAt,
       createdAt: repo.createdAt,
+      languages: repo.languages,
     };
   });
 
-  // Fetch contributor stats in batches
+  // Fire ALL requests in parallel - let throttle plugin handle rate limiting
   const contribStats1 = performance.now();
-  const contribStatsResults = await processBatched(
-    repoInfoList,
-    BATCH_SIZE,
-    (repo) => getReposContributorsStats(octokit, repo.owner, repo.name)
+  const contribStatsPromises = repoInfoList.map((repo) =>
+    getReposContributorsStats(octokit, repo.owner, repo.name)
   );
-  const contribStats2 = performance.now();
-  console.log(`Contributor stats fetch time: ${(contribStats2 - contribStats1).toFixed(2)}ms`);
-
-  // Fetch view counts in batches (only for owned repos)
-  const viewCount1 = performance.now();
   const ownedRepos = repoInfoList.filter((r) => r.isOwner);
-  const viewCountResults = await processBatched(
-    ownedRepos,
-    BATCH_SIZE,
-    (repo) => getReposViewCount(octokit, repo.owner, repo.name)
+  const viewCountPromises = ownedRepos.map((repo) =>
+    getReposViewCount(octokit, repo.owner, repo.name)
   );
-  const viewCount2 = performance.now();
-  console.log(`View count fetch time: ${(viewCount2 - viewCount1).toFixed(2)}ms`);
+
+  // Wait for all in parallel
+  const [contribStatsResults, viewCountResults] = await Promise.all([
+    Promise.allSettled(contribStatsPromises),
+    Promise.allSettled(viewCountPromises),
+  ]);
+
+  const contribStats2 = performance.now();
+  console.log(`All repo stats fetch time: ${(contribStats2 - contribStats1).toFixed(2)}ms`);
 
   // Process contributor stats
   const parseStats1 = performance.now();
@@ -709,6 +819,9 @@ async function main() {
   const calcStats2 = performance.now();
   console.log(`Calculate contribution stats time: ${(calcStats2 - calcStats1).toFixed(2)}ms`);
 
+  // Calculate computed stats (no API calls)
+  const computedStats = calculateComputedStats(repoInfoList, topLanguages, contributionStats);
+
   // Build top repos list (top 10 by stars)
   const topRepos: RepoDetails[] = repoInfoList
     .filter((r) => r.isOwner && !r.isArchived)
@@ -720,15 +833,34 @@ async function main() {
       stars: r.stars,
       forks: r.forks,
       isArchived: r.isArchived,
+      isFork: r.isFork,
+      isPrivate: r.isPrivate,
       primaryLanguage: r.primaryLanguage,
+      topics: r.topics,
       updatedAt: r.updatedAt,
       createdAt: r.createdAt,
     }));
+
+  // Build repo stats
+  const repoStats: RepoStats = {
+    totalRepos: computedStats.totalRepos,
+    publicRepos: computedStats.publicRepos,
+    privateRepos: computedStats.privateRepos,
+    archivedRepos: computedStats.archivedRepos,
+    forkedRepos: computedStats.forkedRepos,
+    originalRepos: computedStats.originalRepos,
+    activeRepos: computedStats.activeRepos,
+    reposWithStars: computedStats.reposWithStars,
+    reposCreatedThisYear: computedStats.reposCreatedThisYear,
+    averageStarsPerRepo: computedStats.averageStarsPerRepo,
+  };
 
   // Build output
   const tableData = [
     ["Name", userDetails.data.name || ""],
     ["Username", username],
+    ["Total Repos", computedStats.totalRepos],
+    ["Active Repos (this year)", computedStats.activeRepos],
     ["Repository Views", formatNumber(repoViews)],
     ["Lines of Code Changed", formatNumber(linesOfCodeChanged)],
     ["Lines Added", formatNumber(linesAdded)],
@@ -738,15 +870,21 @@ async function main() {
     ["Total Pull Requests", userData.user.pullRequests.totalCount],
     ["Total PR Reviews", contributionsCollection.totalPullRequestReviewContributions],
     ["Code Bytes Total", formatBytes(codeByteTotal)],
-    ["Top Languages", topLanguages.slice(0, 5).map((lang) => lang.languageName).join(", ")],
+    ["Languages Used", computedStats.languageCount],
+    ["Primary Language", computedStats.primaryLanguage || "N/A"],
+    ["Primary Language (this year)", computedStats.primaryLanguageThisYear || "N/A"],
     ["Fork Count", forkCount],
     ["Star Count", starCount],
+    ["Avg Stars/Repo", computedStats.averageStarsPerRepo],
     ["Stars Given", starsGiven],
     ["Followers", userData.user.followers.totalCount],
     ["Following", userData.user.following.totalCount],
     ["Current Streak", `${contributionStats.currentStreak} days`],
     ["Longest Streak", `${contributionStats.longestStreak} days`],
     ["Most Active Day", contributionStats.mostActiveDay],
+    ["Contributions (this year)", computedStats.contributionsThisYear],
+    ["Contributions (last year)", computedStats.contributionsLastYear],
+    ["YoY Growth", computedStats.yearOverYearGrowth !== null ? `${computedStats.yearOverYearGrowth}%` : "N/A"],
     ["Total Contributions", contributionsCollection.contributionCalendar.totalContributions],
     ["Closed Issues", userData.user.closedIssues.totalCount],
     ["Open Issues", userData.user.openIssues.totalCount],
@@ -792,6 +930,8 @@ async function main() {
     discussionsAnswered: userData.user.repositoryDiscussionComments.totalCount,
     totalContributions: contributionsCollection.contributionCalendar.totalContributions,
     contributionStats,
+    repoStats,
+    computedStats,
     contributionsCollection,
     topRepos,
     closedIssues: userData.user.closedIssues.totalCount,
