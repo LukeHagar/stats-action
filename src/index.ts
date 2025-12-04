@@ -18,8 +18,8 @@ import type { GraphQlQueryResponseData } from "@octokit/graphql";
 const ThrottledOctokit = Octokit.plugin(throttling);
 
 // Constants
-const MAX_RETRY_COUNT = 10;
-const RETRY_DELAY_MS = 1000;
+const MAX_RETRY_COUNT = 10; // With exponential backoff: 1+2+4+8+16+32+64+128+256+512 = ~17 minutes max
+const INITIAL_RETRY_DELAY_MS = 1000;
 
 /**
  * Log rate limit information from GraphQL response
@@ -303,7 +303,7 @@ export async function getUsersStars(octokit: Octokit, username: string) {
 }
 
 /**
- * Get contributor stats for a repo with retry logic for 202 responses
+ * Get contributor stats for a repo with exponential backoff for 202 responses
  */
 export async function getReposContributorsStats(
   octokit: Octokit,
@@ -319,11 +319,22 @@ export async function getReposContributorsStats(
 
     if (response.status === 202) {
       if (retryCount >= MAX_RETRY_COUNT) {
-        console.warn(`Max retries reached for ${owner}/${repo}, skipping`);
+        console.warn(`Max retries (${MAX_RETRY_COUNT}) reached for ${owner}/${repo} after exponential backoff, skipping`);
         return undefined;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s, 512s
+      const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, retryCount);
+      const maxDelay = 60000; // Cap at 60 seconds per retry
+      const actualDelay = Math.min(delay, maxDelay);
+      
+      if (retryCount === 0) {
+        console.log(`[202] ${owner}/${repo}: GitHub computing stats, waiting ${actualDelay}ms...`);
+      } else {
+        console.log(`[202] ${owner}/${repo}: Retry ${retryCount + 1}/${MAX_RETRY_COUNT}, waiting ${actualDelay}ms...`);
+      }
+      
+      await new Promise((resolve) => setTimeout(resolve, actualDelay));
       return getReposContributorsStats(octokit, owner, repo, retryCount + 1);
     }
 
